@@ -17,7 +17,7 @@ export interface AiSettings {
   webModel: string;
 }
 
-const KEY = 'lsfr-ai';
+const KEY = 'lsau-ai';
 export const DEFAULT_SETTINGS: AiSettings = {
   provider: 'nano', bedrockKey: '', bedrockRegion: 'us-east-1', bedrockModel: 'us.anthropic.claude-haiku-5-5',
   webSearch: true, webModel: 'us.amazon.nova-2-lite-v1:0',
@@ -43,7 +43,7 @@ export function saveSettings(s: AiSettings) {
 // ------------------------------------------------------------------ Chrome built-in model
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const LM = () => (globalThis as any).LanguageModel as any | undefined;
-const NANO_LANG = { expectedInputs: [{ type: 'text', languages: ['fr', 'en'] }], expectedOutputs: [{ type: 'text', languages: ['fr'] }] };
+const NANO_LANG = { expectedInputs: [{ type: 'text', languages: ['en'] }], expectedOutputs: [{ type: 'text', languages: ['en'] }] };
 
 export type NanoState = 'unsupported' | 'unavailable' | 'downloadable' | 'downloading' | 'available';
 
@@ -94,7 +94,7 @@ export interface Assistant {
 async function novaWeb(s: AiSettings, question: string, facts: string, signal?: AbortSignal): Promise<WebAnswer> {
   const res = await converse(s, {
     system: [{ text: WEB_SYSTEM }],
-    messages: [{ role: 'user', content: [{ text: `Demande : ${question}\n\nDonnées de l'application :\n${facts}` }] }],
+    messages: [{ role: 'user', content: [{ text: `Request: ${question}\n\nApp data:\n${facts}` }] }],
     inferenceConfig: { maxTokens: 1500 },
     toolConfig: { tools: [{ systemTool: { name: 'nova_grounding' } }] },
   }, signal, s.webModel);
@@ -118,11 +118,11 @@ export function assistant(s: AiSettings, onProgress?: (p: number) => void): Assi
       async plan(question, signal) {
         const { text, columns } = systemPrompt(question, true);
         const call = (toolChoice: object) => converse(s, {
-          system: [{ text: `${text}\nRéponds toujours en appelant l'outil apply_plan.` }],
+          system: [{ text: `${text}\nAlways answer by calling the apply_plan tool.` }],
           messages: [{ role: 'user', content: [{ text: question }] }],
           inferenceConfig: { maxTokens: 4000 },
           toolConfig: {
-            tools: [{ toolSpec: { name: 'apply_plan', description: 'Applique les critères à la carte et à la liste des communes.', inputSchema: { json: planSchema(columns) } } }],
+            tools: [{ toolSpec: { name: 'apply_plan', description: 'Applies the criteria to the map and the list of suburbs.', inputSchema: { json: planSchema(columns) } } }],
             toolChoice,
           },
         }, signal);
@@ -140,12 +140,12 @@ export function assistant(s: AiSettings, onProgress?: (p: number) => void): Assi
         if (use) return parsePlan(JSON.stringify(use.input));
         const txt = content.map((c: any) => c.text ?? '').join('');
         if (/\{[\s\S]*\}/.test(txt)) return parsePlan(txt);
-        throw new Error('Bedrock n’a pas renvoyé de critères');
+        throw new Error('Bedrock returned no criteria');
       },
       async answer(question, facts, signal) {
         const res = await converse(s, {
           system: [{ text: ANSWER_SYSTEM }],
-          messages: [{ role: 'user', content: [{ text: `Demande : ${question}\n\nCommunes retenues (les meilleures d'abord) :\n${facts}` }] }],
+          messages: [{ role: 'user', content: [{ text: `Request: ${question}\n\nPassing suburbs (best first):\n${facts}` }] }],
           inferenceConfig: { maxTokens: 3000 },
         }, signal);
         // Reasoning models also return a reasoningContent block: keep only the text.
@@ -168,7 +168,7 @@ export function assistant(s: AiSettings, onProgress?: (p: number) => void): Assi
     async answer(question, facts, signal) {
       const session = await nanoSession(ANSWER_SYSTEM, onProgress);
       try {
-        return await session.prompt(`Demande : ${question}\n\nCommunes retenues (les meilleures d'abord) :\n${facts}`, { signal });
+        return await session.prompt(`Request: ${question}\n\nPassing suburbs (best first):\n${facts}`, { signal });
       } finally {
         session.destroy();
       }

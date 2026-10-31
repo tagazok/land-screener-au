@@ -1,1188 +1,410 @@
 {
- "built": "2026-10-30",
+ "built": "2026-10-31",
  "scope": {
-  "label": "France métropolitaine",
-  "departements": 96,
-  "communes": 34746
+  "label": "Greater Adelaide",
+  "councils": 24,
+  "communes": 494
  },
- "dvf_window_end": "2025-12-31",
- "drought_years": [
-  "2021",
-  "2022",
-  "2023",
-  "2024",
-  "2025"
- ],
+ "price_window": "Q4 2025 - Q3 2026",
+ "rent_window": "Jul 2025 - Jun 2026",
+ "erp_year": 2025,
  "sources": [
   {
-   "key": "cog_mvt",
-   "producer": "INSEE – Code officiel géographique",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "COG 2026",
-   "url": "https://www.insee.fr/fr/statistiques/fichier/8740222/v_mvt_commune_2026.csv",
-   "credit": null
-  },
-  {
-   "key": "departements",
-   "producer": "IGN ADMIN EXPRESS via API Découpage administratif (geo.api.gouv.fr)",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "COG en vigueur",
-   "url": "https://geo.api.gouv.fr/departements?fields=code,nom&format=geojson&geometry=contour",
-   "credit": null
-  },
-  {
-   "key": "rent_apt",
-   "producer": "ANIL / DGALN – Carte des loyers",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "3e trimestre 2025 (COG 2025)",
-   "url": "https://static.data.gouv.fr/resources/carte-des-loyers-indicateurs-de-loyers-dannonce-par-commune-en-2025/20251211-145010/pred-app-mef-dhup.csv",
-   "credit": "Estimations ANIL, à partir des données du Groupe SeLoger et de leboncoin"
-  },
-  {
-   "key": "rent_house",
-   "producer": "ANIL / DGALN – Carte des loyers",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "3e trimestre 2025 (COG 2025)",
-   "url": "https://static.data.gouv.fr/resources/carte-des-loyers-indicateurs-de-loyers-dannonce-par-commune-en-2025/20251211-145039/pred-mai-mef-dhup.csv",
-   "credit": "Estimations ANIL, à partir des données du Groupe SeLoger et de leboncoin"
-  },
-  {
-   "key": "gaspar",
-   "producer": "Géorisques / DGPR – GASPAR",
-   "licence": "Licence Ouverte",
-   "vintage": "mise à jour hebdomadaire",
-   "url": "https://files.georisques.fr/GASPAR/gaspar.zip",
-   "credit": null
-  },
-  {
-   "key": "rei",
-   "producer": "DGFiP – REI",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "2025",
-   "url": "https://data.economie.gouv.fr/api/v2/catalog/datasets/impots-locaux-fichier-de-recensement-des-elements-dimposition-a-la-fiscalite-dir/attachments/rei_2025_fichier_notice_tracezip",
-   "credit": null
-  },
-  {
-   "key": "tlv",
-   "producer": "Ministère de la Transition écologique – zonage TLV",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "décret 2025-1267",
-   "url": "https://static.data.gouv.fr/resources/liste-des-communes-selon-le-zonage-tlv-1/20251230-094759/zonage-tlv-decret-22-dec-2025.csv",
-   "credit": null
-  },
-  {
-   "key": "abc",
-   "producer": "Ministère de la Transition écologique – zonage ABC",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "en vigueur au 26 juin 2026",
-   "url": "https://static.data.gouv.fr/resources/liste-des-communes-selon-le-zonage-abc/20260703-091314/liste-ensemble-des-communes-zonage-abc-en-vigueur-26-juin-2026.csv",
-   "credit": null
-  },
-  {
-   "key": "radon",
-   "producer": "ASNR (ex-IRSN) – potentiel radon",
-   "licence": "Licence Ouverte",
-   "vintage": "arrêté 27/06/2018 (COG 2016)",
-   "url": "https://static.data.gouv.fr/resources/connaitre-le-potentiel-radon-de-ma-commune/20190506-174309/radon.csv",
-   "credit": null
-  },
-  {
-   "key": "histo",
-   "producer": "INSEE – séries historiques RP",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "1968–2022 (géographie 2025)",
-   "url": "https://www.insee.fr/fr/statistiques/fichier/8582555/base-cc-serie-historique-2022_csv.zip",
-   "credit": null
-  },
-  {
-   "key": "filosofi",
-   "producer": "INSEE – Filosofi",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "2021 (géographie 2025)",
-   "url": "https://www.insee.fr/fr/statistiques/fichier/7756729/base-cc-filosofi-2021-geo2025_csv.zip",
-   "credit": null
-  },
-  {
-   "key": "tourism",
-   "producer": "INSEE – capacité des communes en hébergement touristique",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "2025 (géographie 2025)",
-   "url": "https://www.insee.fr/fr/statistiques/fichier/2021703/DS_TOUR_CAP_CSV_2025_geo25.zip",
-   "credit": null
-  },
-  {
-   "key": "vigieau_history",
-   "producer": "Ministère de la Transition écologique – VigiEau",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "historique 2010 – sept. 2026",
-   "url": "https://static.data.gouv.fr/resources/donnee-secheresse-vigieau/20260915-045824/historique-communes.zip",
-   "credit": null
-  },
-  {
-   "key": "apl",
-   "producer": "DREES – accessibilité potentielle localisée aux médecins généralistes",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "2024",
-   "url": "https://data.drees.solidarites-sante.gouv.fr/api/v2/catalog/datasets/530_l-accessibilite-potentielle-localisee-apl/attachments/indicateur_d_apl_aux_medecins_generalistes_xlsx",
-   "credit": null
-  },
-  {
-   "key": "coast",
-   "producer": "Ministère de la Transition écologique – communes listées par décret (recul du trait de côte)",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "décret du 13 février 2026",
-   "url": "https://static.data.gouv.fr/resources/liste-des-communes-volontaires-pour-sadapter-au-recul-du-trait-de-cote/20260218-105039/trait-de-cote-commune-2026-95.csv",
-   "credit": null
-  },
-  {
-   "key": "fibre",
-   "producer": "ARCEP – Ma connexion internet",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "30 juin 2026",
-   "url": "https://data.arcep.fr/fixe/maconnexioninternet/statistiques/last/commune/commune_debit_filaire.csv",
-   "credit": null
-  },
-  {
-   "key": "aav",
-   "producer": "INSEE – aires d’attraction des villes 2020",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "géographie 2024",
-   "url": "https://www.insee.fr/fr/statistiques/fichier/4803954/AAV2020_au_01-01-2024.zip",
-   "credit": null
-  },
-  {
-   "key": "bpe",
-   "producer": "INSEE – base permanente des équipements (dénombrements par commune)",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "BPE 2025",
-   "url": "https://www.insee.fr/fr/statistiques/fichier/8217527/DS_BPE_CSV_FR.zip",
-   "credit": null
-  },
-  {
-   "key": "water_udi",
-   "producer": "Ministère de la Santé – communes et réseaux de distribution d’eau",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "2025",
-   "url": "https://static.data.gouv.fr/resources/resultats-du-controle-sanitaire-de-leau-distribuee-commune-par-commune/20260710-140314/dis-2025-dept.zip",
-   "credit": null
-  },
-  {
-   "key": "communes",
-   "producer": "IGN ADMIN EXPRESS via API Découpage administratif (geo.api.gouv.fr)",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "COG en vigueur (fichiers par département)",
-   "url": "https://geo.api.gouv.fr/departements/01/communes?fields=code,nom,population,codeEpci&format=geojson&geometry=contour",
-   "credit": null
-  },
-  {
-   "key": "clay",
-   "producer": "Géorisques / BRGM – exposition au retrait-gonflement des argiles",
-   "licence": "Licence Ouverte",
-   "vintage": "carte d’exposition 2026 (arrêté du 9 janvier 2026) (fichiers par département)",
-   "url": "https://files.georisques.fr/argiles/2025/AleaRG_2025_01_L93.zip",
-   "credit": null
-  },
-  {
-   "key": "water_plv",
-   "producer": "Ministère de la Santé – contrôle sanitaire de l’eau distribuée",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "prélèvements 2025 (fichiers par département)",
-   "url": "https://static.data.gouv.fr/resources/resultats-du-controle-sanitaire-de-leau-distribuee-commune-par-commune/20260710-140314/dis-2025-dept.zip",
-   "credit": null
-  },
-  {
-   "key": "dvf",
-   "producer": "DGFiP – DVF géolocalisées (Etalab)",
-   "licence": "Licence Ouverte 2.0 + CGU DGFiP",
-   "vintage": "2021–2025 (fichiers par département)",
-   "url": "https://files.data.gouv.fr/geo-dvf/latest/csv/2021/departements/01.csv.gz",
-   "credit": null
-  },
-  {
-   "key": "dpe",
-   "producer": "ADEME – DPE logements existants (depuis juillet 2021)",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "extraction 2026-10",
-   "url": "https://data.ademe.fr/datasets/dpe03existant",
+   "key": "boundaries",
+   "producer": "Australian Bureau of Statistics - ASGS Edition 3 (Suburbs and Localities 2021, SA2, Greater Capital City Statistical Area), LGA 2025",
+   "licence": "CC BY 4.0",
+   "vintage": "2021 / 2025",
+   "url": "https://www.abs.gov.au/statistics/standards/australian-statistical-geography-standard-asgs-edition-3",
    "credit": null
   },
   {
    "key": "census",
-   "producer": "INSEE – Recensement de la population 2023 (API Melodi)",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "RP 2023",
-   "url": "https://api.insee.fr/melodi/",
+   "producer": "Australian Bureau of Statistics - Census of Population and Housing 2021, General Community Profile (G01, G02, G34, G36, G37, G43)",
+   "licence": "CC BY 4.0",
+   "vintage": "2021",
+   "url": "https://data.api.abs.gov.au/",
+   "credit": null
+  },
+  {
+   "key": "seifa",
+   "producer": "Australian Bureau of Statistics - SEIFA 2021 by Suburbs and Localities",
+   "licence": "CC BY 4.0",
+   "vintage": "2021",
+   "url": "https://www.abs.gov.au/statistics/people/people-and-communities/socio-economic-indexes-areas-seifa-australia",
+   "credit": null
+  },
+  {
+   "key": "erp",
+   "producer": "Australian Bureau of Statistics - Regional population, ERP by SA2",
+   "licence": "CC BY 4.0",
+   "vintage": "2016 onwards",
+   "url": "https://www.abs.gov.au/statistics/people/population/regional-population",
+   "credit": null
+  },
+  {
+   "key": "house",
+   "producer": "Government of South Australia (Valuer-General) - Metropolitan median house sales, quarterly",
+   "licence": "CC BY 4.0",
+   "vintage": "Q1 2015 - Q3 2026",
+   "url": "https://data.sa.gov.au/data/dataset/metro-median-house-sales",
+   "credit": null
+  },
+  {
+   "key": "rent",
+   "producer": "SA Housing Trust / Consumer and Business Services - Private rental report (rental bonds lodged)",
+   "licence": "CC BY 4.0",
+   "vintage": "Jul 2020 - Jun 2021 and Jul 2025 - Jun 2026",
+   "url": "https://data.sa.gov.au/data/dataset/private-rent-report",
    "credit": null
   },
   {
    "key": "crime",
-   "producer": "Ministère de l’Intérieur – SSMSI, délinquance enregistrée par commune",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "2016–2025",
-   "url": "https://www.data.gouv.fr/fr/datasets/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales/",
+   "producer": "South Australia Police - Crime statistics by suburb",
+   "licence": "CC BY 4.0",
+   "vintage": "2025-26",
+   "url": "https://data.sa.gov.au/data/dataset/crime-statistics",
    "credit": null
   },
   {
-   "key": "schools",
-   "producer": "Ministère de l’Éducation nationale – IPS des collèges, IVAL des lycées GT",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "rentrée 2025 / session 2025",
-   "url": "https://data.education.gouv.fr/",
-   "credit": null
-  },
-  {
-   "key": "students",
-   "producer": "MESR – Atlas régional des effectifs étudiants",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "rentrée 2025",
-   "url": "https://data.enseignementsup-recherche.gouv.fr/",
-   "credit": null
-  },
-  {
-   "key": "tapwater",
-   "producer": "Ministère de la Santé – contrôle sanitaire de l’eau distribuée, résultats par paramètre (pesticides, PFAS)",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "analyses 2025",
-   "url": "https://static.data.gouv.fr/resources/resultats-du-controle-sanitaire-de-leau-distribuee-commune-par-commune/20260710-140314/dis-2025-dept.zip",
+   "key": "bushfire",
+   "producer": "Department for Housing and Urban Development (Plan SA) - Bushfire protection areas",
+   "licence": "CC BY 4.0",
+   "vintage": "2008-2013 mapping, extract 2026-08",
+   "url": "https://data.sa.gov.au/data/dataset/bushfire-protection-areas",
    "credit": null
   },
   {
    "key": "relief",
-   "producer": "IGN – BD ALTI® V2, MNT 75 m",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "édition 2020",
-   "url": "https://geoservices.ign.fr/bdalti",
-   "credit": null
+   "producer": "Copernicus DEM GLO-90 (ESA)",
+   "licence": "Copernicus DEM licence (free use with attribution)",
+   "vintage": "2021",
+   "url": "https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model",
+   "credit": "© DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA"
   },
   {
    "key": "forest",
-   "producer": "ESA WorldCover 10 m 2021 v200 (Zanaga et al. 2022)",
+   "producer": "ESA WorldCover 10 m 2021 v200",
    "licence": "CC BY 4.0",
    "vintage": "2021",
    "url": "https://esa-worldcover.org/",
    "credit": "© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium"
-  },
-  {
-   "key": "tourism_history",
-   "producer": "INSEE – capacité des communes en hébergement touristique, millésimes 2015 à 2026",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "2015–2026",
-   "url": "https://www.insee.fr/fr/statistiques/2021703",
-   "credit": null
-  },
-  {
-   "key": "zfe",
-   "producer": "Point d’accès national transport.data.gouv.fr – base nationale consolidée des ZFE",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "mise à jour du 26 mars 2026",
-   "url": "https://transport.data.gouv.fr/datasets/base-nationale-consolidee-des-zones-a-faibles-emissions",
-   "credit": null
-  },
-  {
-   "key": "soil",
-   "producer": "Géorisques / BRGM – CASIAS, sites et sols pollués (ex-BASOL), secteurs d’information sur les sols (SIS)",
-   "licence": "Licence Ouverte 2.0",
-   "vintage": "extraction 2026-10",
-   "url": "https://www.georisques.gouv.fr/donnees/bases-de-donnees",
-   "credit": null
   }
  ],
  "columns": {
-  "price_m2_apt": {
-   "unit": "€/m²",
-   "label": "Median sale price per m², flats, last 24 months (DVF)"
-  },
-  "price_m2_house": {
-   "unit": "€/m²",
-   "label": "Median sale price per m², houses, last 24 months (DVF)"
-  },
   "price_median_house": {
-   "unit": "€",
-   "label": "Median house sale price, last 24 months (DVF)"
-  },
-  "n_sales_apt": {
-   "unit": "count",
-   "label": "Single-flat sales used"
+   "unit": "A$",
+   "label": "Median house sale price, last 4 quarters (Q4 2025 - Q3 2026), SA Valuer-General"
   },
   "n_sales_house": {
    "unit": "count",
-   "label": "Single-house sales used"
+   "label": "House sales in the last 4 quarters"
   },
-  "price_trend_3y": {
+  "price_trend_5y": {
    "unit": "ratio",
-   "label": "All-dwelling €/m² change, last 12 months vs 3 years earlier"
+   "label": "Median house price change vs the same 4 quarters five years earlier"
   },
-  "land_price_m2": {
-   "unit": "€/m²",
-   "label": "Median building-land price per m², last 36 months (DVF)"
+  "rent_week_house": {
+   "unit": "A$/week",
+   "label": "Median weekly rent of new house leases, last 4 quarters (rental bonds)"
   },
-  "n_land_sales": {
+  "n_bonds_house": {
    "unit": "count",
-   "label": "Building-land sales used"
+   "label": "New house leases (bonds) in the last 4 quarters"
   },
-  "rent_m2_apt": {
-   "unit": "€/m²/month",
-   "label": "Listing rent, flats, charges incl., unfurnished (ANIL 2025)"
+  "rent_week_flat": {
+   "unit": "A$/week",
+   "label": "Median weekly rent of new flat/unit leases, last 4 quarters"
   },
-  "rent_m2_house": {
-   "unit": "€/m²/month",
-   "label": "Listing rent, houses, charges incl., unfurnished (ANIL 2025)"
+  "n_bonds_flat": {
+   "unit": "count",
+   "label": "New flat/unit leases in the last 4 quarters"
   },
-  "rent_confidence_apt": {
-   "unit": "enum",
-   "label": "ANIL reliability: high / medium / low"
-  },
-  "rent_confidence_house": {
-   "unit": "enum",
-   "label": "ANIL reliability: high / medium / low"
-  },
-  "gross_yield_apt": {
+  "rent_trend_5y": {
    "unit": "ratio",
-   "label": "rent_m2_apt × 12 / price_m2_apt"
+   "label": "House rent change vs the same 4 quarters five years earlier"
   },
   "gross_yield_house": {
    "unit": "ratio",
-   "label": "rent_m2_house × 12 / price_m2_house"
-  },
-  "tfpb_rate": {
-   "unit": "%",
-   "label": "Total built-property tax rate (commune+EPCI+syndicates+TSE+GEMAPI), REI 2025"
-  },
-  "tfpb_commune_avg_eur": {
-   "unit": "€",
-   "label": "Average commune share of taxe foncière per tax unit, REI 2025"
-  },
-  "second_home_surcharge": {
-   "unit": "%",
-   "label": "Taxe d'habitation surcharge on second homes (0–60), REI 2025"
-  },
-  "zone_tendue": {
-   "unit": "bool",
-   "label": "Zone tendue (TLV), décret 22/12/2025"
-  },
-  "zone_tendue_touristique": {
-   "unit": "bool",
-   "label": "Tense tourist zone (TLV category 2)"
-  },
-  "zone_abc": {
-   "unit": "enum",
-   "label": "Housing zone A bis / A / B1 / B2 / C (26/06/2026)"
+   "label": "rent_week_house x 52 / price_median_house"
   },
   "pop": {
    "unit": "people",
-   "label": "Population 2022 (INSEE RP)"
-  },
-  "pop_cagr_11y": {
-   "unit": "ratio/yr",
-   "label": "Population growth per year 2011–2022"
+   "label": "Usual residents, Census 2021"
   },
   "density": {
-   "unit": "people/km²",
-   "label": "Population density 2022"
+   "unit": "people/km2",
+   "label": "Residents per km2"
   },
-  "second_home_share": {
-   "unit": "ratio",
-   "label": "Second homes / all dwellings 2022"
+  "pop_cagr": {
+   "unit": "ratio/yr",
+   "label": "Population growth per year 2016 -> latest ERP, of the suburb's SA2 area"
   },
-  "vacancy_rate": {
-   "unit": "ratio",
-   "label": "Vacant / all dwellings 2022"
+  "median_age": {
+   "unit": "years",
+   "label": "Median age, Census 2021"
   },
-  "median_income": {
-   "unit": "€/yr",
-   "label": "Median disposable income per consumption unit 2021 (Filosofi)"
+  "median_hh_income_week": {
+   "unit": "A$/week",
+   "label": "Median household income, Census 2021"
   },
-  "poverty_rate": {
-   "unit": "%",
-   "label": "Poverty rate 2021 (Filosofi)"
+  "census_rent_week": {
+   "unit": "A$/week",
+   "label": "Median rent paid by renting households, Census 2021"
   },
-  "tourist_beds": {
-   "unit": "beds",
-   "label": "Hotel rooms×2 + camping pitches×3 + other collective beds (INSEE 2025)"
-  },
-  "tourist_beds_per_1000": {
-   "unit": "beds/1000 hab",
-   "label": "Tourist beds per 1000 residents"
-  },
-  "catnat_flood": {
-   "unit": "count",
-   "label": "Flood / mudflow natural-disaster decrees since 1996"
-  },
-  "catnat_drought": {
-   "unit": "count",
-   "label": "Drought (clay subsidence) natural-disaster decrees since 1996"
-  },
-  "catnat_total": {
-   "unit": "count",
-   "label": "All natural-disaster decrees since 1996"
-  },
-  "risk_flood": {
-   "unit": "bool",
-   "label": "Flood risk declared (GASPAR)"
-  },
-  "risk_marine_flood": {
-   "unit": "bool",
-   "label": "Marine submersion risk declared"
-  },
-  "risk_forest_fire": {
-   "unit": "bool",
-   "label": "Forest-fire risk declared"
-  },
-  "risk_clay": {
-   "unit": "bool",
-   "label": "Clay shrink-swell (tassements différentiels) risk declared"
-  },
-  "risk_industrial": {
-   "unit": "bool",
-   "label": "Industrial risk declared"
-  },
-  "ppr_flood": {
-   "unit": "bool",
-   "label": "Flood risk-prevention plan in force or prescribed"
-  },
-  "ppr_fire": {
-   "unit": "bool",
-   "label": "Forest-fire risk-prevention plan in force or prescribed"
-  },
-  "ppr_industrial": {
-   "unit": "bool",
-   "label": "Technological risk-prevention plan (PPRT)"
-  },
-  "radon_class": {
-   "unit": "1–3",
-   "label": "Radon potential class (ASNR)"
-  },
-  "drought_days_avg": {
-   "unit": "days/yr",
-   "label": "Days at ≥ 'alerte renforcée' water restriction, avg 2021–2025 (VigiEau)"
-  },
-  "crisis_days_avg": {
-   "unit": "days/yr",
-   "label": "Days at 'crise' water restriction, avg 2021–2025"
-  },
-  "drinking_water_days_avg": {
-   "unit": "days/yr",
-   "label": "Days with drinking-water restriction ≥ 'alerte', avg 2021–2025"
-  },
-  "catnat_coast": {
-   "unit": "count",
-   "label": "Wave-shock natural-disaster decrees since 1996"
-  },
-  "risk_coast_erosion": {
-   "unit": "bool",
-   "label": "Coastal erosion / dune advance risk declared"
-  },
-  "ppr_coast": {
-   "unit": "bool",
-   "label": "Coastal risk-prevention plan in force or prescribed"
-  },
-  "coast_retreat_decree": {
-   "unit": "bool",
-   "label": "Listed by decree as exposed to coastline retreat (2026)"
-  },
-  "clay_high_share": {
-   "unit": "ratio",
-   "label": "Share of commune area in high clay shrink-swell exposure (2026 map)"
-  },
-  "clay_medium_share": {
-   "unit": "ratio",
-   "label": "Share of commune area in medium clay exposure"
-  },
-  "clay_med_high_share": {
-   "unit": "ratio",
-   "label": "Share of commune area in medium or high clay exposure"
-  },
-  "apl_gp": {
-   "unit": "consult/yr/hab",
-   "label": "GP accessibility (DREES APL)"
-  },
-  "apl_gp_65": {
-   "unit": "consult/yr/hab",
-   "label": "GP accessibility counting only GPs aged 65 or less"
-  },
-  "fibre_share": {
-   "unit": "ratio",
-   "label": "Share of premises eligible to ≥1 Gbit/s (fibre), ARCEP"
-  },
-  "thd_share": {
-   "unit": "ratio",
-   "label": "Share of premises eligible to ≥30 Mbit/s"
-  },
-  "aav_category": {
-   "unit": "enum",
-   "label": "Position in INSEE city attraction area 2020"
-  },
-  "aav_name": {
-   "unit": "text",
-   "label": "City attraction area"
-  },
-  "aav_size": {
-   "unit": "enum",
-   "label": "Size class of the attraction area"
-  },
-  "water_limit_breach_share": {
-   "unit": "ratio",
-   "label": "Share of 2025 drinking-water samples breaking a health limit"
-  },
-  "water_reference_breach_share": {
-   "unit": "ratio",
-   "label": "Share of 2025 samples breaking a quality reference"
-  },
-  "pesticide_samples": {
-   "unit": "count",
-   "label": "2025 tap-water samples analysed for pesticides"
-  },
-  "pesticide_breach_share": {
-   "unit": "ratio",
-   "label": "Share of those samples with a pesticide or metabolite over its limit"
-  },
-  "pfas_samples": {
-   "unit": "count",
-   "label": "2025 tap-water samples analysed for the sum of 20 PFAS"
-  },
-  "pfas_max": {
-   "unit": "µg/L",
-   "label": "Highest sum of 20 PFAS measured in 2025 (limit 0.1 µg/L)"
-  },
-  "pfas_breach_share": {
-   "unit": "ratio",
-   "label": "Share of PFAS samples over 0.1 µg/L"
-  },
-  "alt_mean": {
-   "unit": "m",
-   "label": "Mean altitude (IGN BD ALTI 75 m, averaged to 150 m)"
-  },
-  "alt_min": {
-   "unit": "m",
-   "label": "Lowest altitude in the commune"
-  },
-  "alt_max": {
-   "unit": "m",
-   "label": "Highest altitude in the commune"
-  },
-  "relief_m": {
-   "unit": "m",
-   "label": "Relief: 95th minus 5th percentile of altitude"
-  },
-  "forest_share": {
-   "unit": "ratio",
-   "label": "Share of land under tree cover (ESA WorldCover 2021)"
-  },
-  "forest_around_share": {
-   "unit": "ratio",
-   "label": "Share of tree cover within ~5 km (ESA WorldCover 2021)"
-  },
-  "town3000_km": {
-   "unit": "km",
-   "label": "Distance to the nearest commune of 3,000+ residents (0 = itself)"
-  },
-  "town3000_name": {
-   "unit": "text",
-   "label": "Nearest commune of 3,000+ residents"
-  },
-  "postcodes": {
-   "unit": "text",
-   "label": "Postal codes of the commune, space-separated (geo.api.gouv.fr)"
-  },
-  "tour_beds_change": {
-   "unit": "ratio",
-   "label": "Change in tourist beds 2019 -> 2026 (INSEE)"
-  },
-  "tour_beds_added": {
-   "unit": "beds",
-   "label": "Tourist beds added 2019 -> 2026"
-  },
-  "parking_price": {
-   "unit": "€",
-   "label": "Median price of one standalone outbuilding (garage/parking/cellar), last 36 months (DVF)"
-  },
-  "n_parking_sales": {
-   "unit": "count",
-   "label": "Standalone outbuilding sales, last 36 months"
-  },
-  "car_share": {
-   "unit": "ratio",
-   "label": "Households with at least one car (RP 2023)"
-  },
-  "parking_spot_share": {
-   "unit": "ratio",
-   "label": "Households with a reserved parking spot (RP 2023)"
+  "household_size": {
+   "unit": "people",
+   "label": "Average household size"
   },
   "cars_per_household": {
    "unit": "cars",
-   "label": "Cars per household, lower bound (2+ counted as 2)"
+   "label": "Motor vehicles per dwelling (4+ counted as 4)"
   },
-  "parking_gap_share": {
+  "no_car_share": {
    "unit": "ratio",
-   "label": "Estimated households with a car but no spot / households"
+   "label": "Dwellings with no motor vehicle"
   },
-  "parking_gap": {
+  "dwellings": {
    "unit": "count",
-   "label": "Estimated households with a car but no reserved spot"
+   "label": "Private dwellings"
   },
-  "zfe_share": {
+  "unoccupied_share": {
    "unit": "ratio",
-   "label": "Share of commune area in a low-emission zone restricting private cars today"
+   "label": "Unoccupied private dwellings on census night"
   },
-  "second_homes_2022": {
-   "unit": "count",
-   "label": "Second homes 2022"
-  },
-  "second_homes_change": {
+  "house_share": {
    "unit": "ratio",
-   "label": "Change in second homes 2011 -> 2022"
+   "label": "Separate houses / occupied dwellings"
   },
-  "second_home_share_change": {
+  "flat_share": {
    "unit": "ratio",
-   "label": "Change in second-home share of dwellings 2011 -> 2022 (points)"
-  },
-  "casias_count": {
-   "unit": "count",
-   "label": "CASIAS former industrial / service sites (Géorisques)"
-  },
-  "casias_per_km2": {
-   "unit": "sites/km²",
-   "label": "CASIAS sites per km²"
-  },
-  "polluted_site_count": {
-   "unit": "count",
-   "label": "Sites with known soil pollution under State action (ex-BASOL)"
-  },
-  "sis_count": {
-   "unit": "count",
-   "label": "Secteurs d'information sur les sols (SIS)"
-  },
-  "gp_count": {
-   "unit": "count",
-   "label": "GPs in the commune (BPE 2025)"
-  },
-  "tfpb_total_avg_eur": {
-   "unit": "€",
-   "label": "Average total property tax per tax account (estimate from REI 2025)"
+   "label": "Flats or apartments / occupied dwellings"
   },
   "tenant_share": {
    "unit": "ratio",
-   "label": "Tenants / main residences (RP 2023)"
-  },
-  "private_rent_share": {
-   "unit": "ratio",
-   "label": "Private unfurnished tenants / main residences"
-  },
-  "furnished_share": {
-   "unit": "ratio",
-   "label": "Furnished tenants / main residences"
+   "label": "Renting households"
   },
   "social_share": {
    "unit": "ratio",
-   "label": "Social housing tenants / main residences"
+   "label": "Households renting from the state housing authority or a community provider"
+  },
+  "owner_share": {
+   "unit": "ratio",
+   "label": "Owner-occupied households"
   },
   "unemployment_rate": {
    "unit": "ratio",
-   "label": "Unemployed / active population aged 15-64 (RP 2023)"
+   "label": "Unemployment rate, Census 2021"
   },
-  "jobs": {
-   "unit": "count",
-   "label": "Jobs located in the commune (RP 2023)"
-  },
-  "jobs_per_active": {
+  "degree_share": {
    "unit": "ratio",
-   "label": "Jobs in the commune / active residents"
+   "label": "Residents 15+ with a bachelor degree or higher"
   },
-  "students": {
-   "unit": "count",
-   "label": "Higher-education students enrolled in the commune (2025-26)"
+  "seifa_irsad": {
+   "unit": "index",
+   "label": "SEIFA 2021 IRSAD score (1000 = Australian average)"
   },
-  "students_per_1000": {
-   "unit": "per 1000",
-   "label": "Students per 1000 residents"
-  },
-  "dpe_count": {
-   "unit": "count",
-   "label": "Energy diagnostics (DPE) since July 2021"
-  },
-  "dpe_fg_share": {
-   "unit": "ratio",
-   "label": "Share of DPE rated F or G"
-  },
-  "dpe_g_share": {
-   "unit": "ratio",
-   "label": "Share of DPE rated G"
+  "seifa_decile_sa": {
+   "unit": "1-10",
+   "label": "IRSAD decile within South Australia"
   },
   "crime_burglary": {
    "unit": "per 1000 dwellings",
-   "label": "Residential burglaries 2025 (SSMSI)"
+   "label": "Residential break-ins (SCT - residence), 2025-26"
   },
   "crime_violence": {
    "unit": "per 1000",
-   "label": "Physical violence outside the family 2025"
+   "label": "Assault, robbery and homicide offences, 2025-26"
   },
   "crime_damage": {
    "unit": "per 1000",
-   "label": "Deliberate damage 2025"
+   "label": "Property damage offences, 2025-26"
   },
   "crime_theft": {
    "unit": "per 1000",
-   "label": "Theft without violence against people 2025"
+   "label": "Motor vehicle theft, theft from a person, other theft, 2025-26"
   },
-  "crime_estimated": {
-   "unit": "bool",
-   "label": "Crime figures are département averages for small numbers"
+  "bushfire_high_share": {
+   "unit": "ratio",
+   "label": "Share of suburb area in a High bushfire protection area"
   },
-  "college_ips": {
-   "unit": "index",
-   "label": "Social-position index of public collèges (100 ≈ national average)"
+  "bushfire_medium_share": {
+   "unit": "ratio",
+   "label": "Share in a Medium bushfire protection area"
   },
-  "lycee_success": {
-   "unit": "%",
-   "label": "Baccalauréat success rate of public general/technological lycées"
+  "bushfire_general_share": {
+   "unit": "ratio",
+   "label": "Share in a General bushfire protection area"
   },
-  "lycee_value_added": {
-   "unit": "points",
-   "label": "Lycée value added (success vs expected)"
+  "bushfire_med_high_share": {
+   "unit": "ratio",
+   "label": "Share in a High or Medium bushfire protection area"
   },
-  "dist_gp_km": {
+  "alt_mean": {
+   "unit": "m",
+   "label": "Mean elevation (Copernicus DEM 90 m)"
+  },
+  "alt_min": {
+   "unit": "m",
+   "label": "Lowest elevation"
+  },
+  "alt_max": {
+   "unit": "m",
+   "label": "Highest elevation"
+  },
+  "relief_m": {
+   "unit": "m",
+   "label": "95th minus 5th percentile of elevation"
+  },
+  "low_lying_share": {
+   "unit": "ratio",
+   "label": "Share of suburb area below 5 m elevation"
+  },
+  "forest_share": {
+   "unit": "ratio",
+   "label": "Tree cover (ESA WorldCover 2021)"
+  },
+  "forest_around_share": {
+   "unit": "ratio",
+   "label": "Tree cover within ~5 km"
+  },
+  "cbd_km": {
    "unit": "km",
-   "label": "Distance to nearest commune with: gp (BPE 2025)"
+   "label": "Straight-line distance to the Adelaide GPO"
   },
-  "dist_pharmacy_km": {
-   "unit": "km",
-   "label": "Distance to nearest commune with: pharmacy (BPE 2025)"
+  "council": {
+   "unit": "text",
+   "label": "Local council (LGA 2025)"
   },
-  "dist_emergency_km": {
-   "unit": "km",
-   "label": "Distance to nearest commune with: emergency (BPE 2025)"
-  },
-  "dist_supermarket_km": {
-   "unit": "km",
-   "label": "Distance to nearest commune with: supermarket (BPE 2025)"
-  },
-  "dist_bakery_km": {
-   "unit": "km",
-   "label": "Distance to nearest commune with: bakery (BPE 2025)"
-  },
-  "dist_primary_school_km": {
-   "unit": "km",
-   "label": "Distance to nearest commune with: primary_school (BPE 2025)"
-  },
-  "dist_college_km": {
-   "unit": "km",
-   "label": "Distance to nearest commune with: college (BPE 2025)"
-  },
-  "dist_lycee_km": {
-   "unit": "km",
-   "label": "Distance to nearest commune with: lycee (BPE 2025)"
-  },
-  "dist_train_km": {
-   "unit": "km",
-   "label": "Distance to nearest commune with: train (BPE 2025)"
-  },
-  "dist_post_km": {
-   "unit": "km",
-   "label": "Distance to nearest commune with: post (BPE 2025)"
+  "postcodes": {
+   "unit": "text",
+   "label": "Postcode most often recorded with the suburb name in SAPOL crime data"
   }
  },
  "coverage": {
-  "price_m2_apt": 0.124,
-  "price_m2_house": 0.681,
-  "price_median_house": 0.681,
-  "n_sales_apt": 1.0,
+  "price_median_house": 0.731,
   "n_sales_house": 1.0,
-  "price_trend_3y": 0.29,
-  "land_price_m2": 0.266,
-  "n_land_sales": 1.0,
-  "rent_m2_apt": 0.993,
-  "rent_m2_house": 0.993,
-  "rent_confidence_apt": 0.993,
-  "rent_confidence_house": 0.993,
-  "gross_yield_apt": 0.124,
-  "gross_yield_house": 0.681,
-  "tfpb_rate": 0.993,
-  "tfpb_commune_avg_eur": 0.99,
-  "second_home_surcharge": 0.993,
-  "zone_tendue": 1.0,
-  "zone_tendue_touristique": 1.0,
-  "zone_abc": 0.993,
-  "pop": 0.993,
-  "pop_cagr_11y": 0.993,
-  "density": 0.993,
-  "second_home_share": 0.993,
-  "vacancy_rate": 0.993,
-  "median_income": 0.891,
-  "poverty_rate": 0.124,
-  "tourist_beds": 1.0,
-  "tourist_beds_per_1000": 0.993,
-  "catnat_flood": 1.0,
-  "catnat_drought": 1.0,
-  "catnat_total": 1.0,
-  "risk_flood": 1.0,
-  "risk_marine_flood": 1.0,
-  "risk_forest_fire": 1.0,
-  "risk_clay": 1.0,
-  "risk_industrial": 1.0,
-  "ppr_flood": 1.0,
-  "ppr_fire": 1.0,
-  "ppr_industrial": 1.0,
-  "radon_class": 0.993,
-  "drought_days_avg": 0.993,
-  "crisis_days_avg": 0.993,
-  "drinking_water_days_avg": 0.993,
-  "catnat_coast": 1.0,
-  "risk_coast_erosion": 1.0,
-  "ppr_coast": 1.0,
-  "coast_retreat_decree": 1.0,
-  "clay_high_share": 1.0,
-  "clay_medium_share": 1.0,
-  "clay_med_high_share": 1.0,
-  "apl_gp": 0.993,
-  "apl_gp_65": 0.993,
-  "fibre_share": 0.993,
-  "thd_share": 0.993,
-  "aav_category": 0.993,
-  "aav_name": 0.993,
-  "aav_size": 0.993,
-  "water_limit_breach_share": 0.991,
-  "water_reference_breach_share": 0.991,
-  "pesticide_samples": 0.991,
-  "pesticide_breach_share": 0.936,
-  "pfas_samples": 0.991,
-  "pfas_max": 0.795,
-  "pfas_breach_share": 0.795,
+  "price_trend_5y": 0.638,
+  "rent_week_house": 0.731,
+  "n_bonds_house": 1.0,
+  "rent_week_flat": 0.526,
+  "n_bonds_flat": 1.0,
+  "rent_trend_5y": 0.702,
+  "gross_yield_house": 0.688,
+  "pop": 1.0,
+  "density": 1.0,
+  "pop_cagr": 0.984,
+  "median_age": 1.0,
+  "median_hh_income_week": 1.0,
+  "census_rent_week": 1.0,
+  "household_size": 1.0,
+  "cars_per_household": 0.984,
+  "no_car_share": 0.984,
+  "dwellings": 1.0,
+  "unoccupied_share": 0.984,
+  "house_share": 0.984,
+  "flat_share": 0.984,
+  "tenant_share": 0.984,
+  "social_share": 0.984,
+  "owner_share": 0.984,
+  "unemployment_rate": 1.0,
+  "degree_share": 0.99,
+  "seifa_irsad": 0.974,
+  "seifa_decile_sa": 0.974,
+  "crime_burglary": 0.893,
+  "crime_violence": 0.895,
+  "crime_damage": 0.895,
+  "crime_theft": 0.895,
+  "bushfire_high_share": 1.0,
+  "bushfire_medium_share": 1.0,
+  "bushfire_general_share": 1.0,
+  "bushfire_med_high_share": 1.0,
   "alt_mean": 1.0,
   "alt_min": 1.0,
   "alt_max": 1.0,
   "relief_m": 1.0,
+  "low_lying_share": 1.0,
   "forest_share": 1.0,
   "forest_around_share": 1.0,
-  "town3000_km": 1.0,
-  "town3000_name": 1.0,
-  "postcodes": 1.0,
-  "tour_beds_change": 0.227,
-  "tour_beds_added": 0.993,
-  "parking_price": 0.052,
-  "n_parking_sales": 0.17,
-  "car_share": 0.993,
-  "parking_spot_share": 0.993,
-  "cars_per_household": 0.993,
-  "parking_gap_share": 0.993,
-  "parking_gap": 0.993,
-  "zfe_share": 0.005,
-  "second_homes_2022": 0.993,
-  "second_homes_change": 0.675,
-  "second_home_share_change": 0.993,
-  "casias_count": 1.0,
-  "casias_per_km2": 0.993,
-  "polluted_site_count": 1.0,
-  "sis_count": 1.0,
-  "gp_count": 1.0,
-  "tfpb_total_avg_eur": 0.99,
-  "tenant_share": 0.993,
-  "private_rent_share": 0.993,
-  "furnished_share": 0.993,
-  "social_share": 0.993,
-  "unemployment_rate": 0.993,
-  "jobs": 0.993,
-  "jobs_per_active": 0.993,
-  "students": 1.0,
-  "students_per_1000": 0.993,
-  "dpe_count": 1.0,
-  "dpe_fg_share": 0.753,
-  "dpe_g_share": 0.753,
-  "crime_burglary": 0.993,
-  "crime_violence": 0.993,
-  "crime_damage": 0.993,
-  "crime_theft": 0.993,
-  "crime_estimated": 1.0,
-  "college_ips": 1.0,
-  "lycee_success": 1.0,
-  "lycee_value_added": 1.0,
-  "dist_gp_km": 1.0,
-  "dist_pharmacy_km": 1.0,
-  "dist_emergency_km": 1.0,
-  "dist_supermarket_km": 1.0,
-  "dist_bakery_km": 1.0,
-  "dist_primary_school_km": 1.0,
-  "dist_college_km": 1.0,
-  "dist_lycee_km": 1.0,
-  "dist_train_km": 1.0,
-  "dist_post_km": 1.0
+  "cbd_km": 1.0,
+  "council": 1.0,
+  "postcodes": 0.98
  },
  "join_report": {
-  "prices": {
-   "matched": 31727,
+  "house": {
+   "matched": 392,
    "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
+    "ONKAPARINGA HEIGHTS",
+    "RIVERLEA PARK"
    ]
   },
-  "trend": {
-   "matched": 31986,
+  "rent": {
+   "matched": 450,
    "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "land": {
-   "matched": 16195,
-   "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "history": {
-   "matched": 32753,
-   "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "parking": {
-   "matched": 5890,
-   "unmatched": [
-    "12076",
-    "49069",
-    "69159"
-   ]
-  },
-  "rents": {
-   "matched": 34494,
-   "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "tax": {
-   "matched": 34493,
-   "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "zoning": {
-   "matched": 34494,
-   "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "risk": {
-   "matched": 34410,
-   "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "radon": {
-   "matched": 34494,
-   "unmatched": [
-    "02344",
-    "12076",
-    "14011",
-    "14513",
-    "49069",
-    "49144",
-    "69159"
-   ]
-  },
-  "insee": {
-   "matched": 34494,
-   "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "drought": {
-   "matched": 34494,
-   "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "clay": {
-   "matched": 34745,
-   "unmatched": []
-  },
-  "apl": {
-   "matched": 34488,
-   "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "coast": {
-   "matched": 316,
-   "unmatched": []
-  },
-  "fibre": {
-   "matched": 34494,
-   "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "aav": {
-   "matched": 34494,
-   "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "water": {
-   "matched": 34423,
-   "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "services": {
-   "matched": 34746,
-   "unmatched": []
-  },
-  "census": {
-   "matched": 34494,
-   "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "dpe": {
-   "matched": 34409,
-   "unmatched": [
-    "06920",
-    "06927",
-    "12076",
-    "13130",
-    "14011",
-    "34926",
-    "35700",
-    "35850",
-    "41600",
-    "45700",
-    "49069",
-    "59 293",
-    "59000",
-    "62 048",
-    "62 178",
-    "62 765",
-    "69159",
-    "6924",
-    "75007",
-    "79700"
+    "ALFORD",
+    "ALLENDALE EAST",
+    "ALTONA",
+    "AMERICAN RIVER",
+    "ANAMA",
+    "ANDAMOOKA",
+    "ANGASTON",
+    "ARDROSSAN",
+    "ARMAGH",
+    "ARNO BAY",
+    "ARTHURTON",
+    "AUBURN",
+    "AVENUE RANGE",
+    "BACK VALLEY",
+    "BALAKLAVA",
+    "BALLAST HEAD",
+    "BARABBA",
+    "BARMERA",
+    "BAROOTA",
+    "BAUDIN BEACH",
+    "BEACHPORT",
+    "BERRI",
+    "BETHANY",
+    "BLACKFELLOWS CAVES",
+    "BLANCHE HARBOR",
+    "BLANCHETOWN",
+    "BLYTH",
+    "BOOLEROO CENTRE",
+    "BORDERTOWN",
+    "BOSTON"
    ]
   },
   "crime": {
-   "matched": 34494,
+   "matched": 484,
    "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "schools": {
-   "matched": 34746,
-   "unmatched": []
-  },
-  "students": {
-   "matched": 1474,
-   "unmatched": []
-  },
-  "tapwater": {
-   "matched": 34424,
-   "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
-   ]
-  },
-  "soil": {
-   "matched": 26854,
-   "unmatched": [
-    "06908",
-    "06959",
-    "11910",
-    "12076",
-    "12901",
-    "14011",
-    "14513",
-    "14624",
-    "18901",
-    "29933",
-    "29934",
-    "30937",
-    "30938",
-    "33934",
-    "35905",
-    "38902",
-    "42902",
-    "44060",
-    "49069",
-    "49144"
-   ]
-  },
-  "relief": {
-   "matched": 34746,
-   "unmatched": []
-  },
-  "forest": {
-   "matched": 34746,
-   "unmatched": []
-  },
-  "zfe": {
-   "matched": 168,
-   "unmatched": []
-  },
-  "tourism_history": {
-   "matched": 34494,
-   "unmatched": [
-    "02344",
-    "12076",
-    "14011",
-    "14513",
-    "14624",
-    "44060",
-    "49069",
-    "49144",
-    "69159"
-   ]
-  },
-  "second_homes": {
-   "matched": 34494,
-   "unmatched": [
-    "12076",
-    "14011",
-    "49069",
-    "69159"
+    "",
+    "AGERY",
+    "ALFORD",
+    "ALICE SPRING",
+    "ALICE SPRINGS",
+    "ALLENDALE EAST",
+    "ALLENDALE NORTH",
+    "ALTONA",
+    "AMATA",
+    "AMERICAN RIVER",
+    "ANANGU PITJANTJATJARA YANKUNYTJATJARA",
+    "ANDAMOOKA",
+    "ANGAS PLAINS",
+    "ANGAS VALLEY",
+    "ANGASTON",
+    "ANNA CREEK",
+    "ANNADALE",
+    "APPILA",
+    "ARARAT",
+    "ARDROSSAN",
+    "ARKAROOLA",
+    "ARKAROOLA VILLAGE",
+    "ARMAGH",
+    "ARNO BAY",
+    "ARTHURTON",
+    "ASHBOURNE",
+    "AUBURN",
+    "AUSTRALIA PLAINS",
+    "AVOCA DELL",
+    "AVON"
    ]
   }
  }

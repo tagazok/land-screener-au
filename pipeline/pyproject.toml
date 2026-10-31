@@ -1,7 +1,7 @@
 [project]
-name = "lsfr-pipeline"
+name = "lsau-pipeline"
 version = "0.1.0"
-description = "Land Screener FR data pipeline (v0: Gironde)"
+description = "Land Screener AU data pipeline (Greater Adelaide)"
 requires-python = ">=3.12"
 dependencies = [
   "polars==1.17.1",
@@ -23,14 +23,14 @@ dependencies = [
 dev = ["pytest==8.3.4"]
 
 [project.scripts]
-lsfr = "lsfr.cli:main"
+lsau = "lsau.cli:main"
 
 [build-system]
 requires = ["hatchling==1.26.3"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/lsfr"]
+packages = ["src/lsau"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

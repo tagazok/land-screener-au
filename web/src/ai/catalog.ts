@@ -14,12 +14,11 @@ export interface CatalogEntry {
 }
 
 const UNIT: Record<string, string> = {
-  pct: '%', pct_raw: '%', eur: '€', eur_m2: '€/m²', eur_m2_month: '€/m²/mois', count: 'nombre', days: 'jours/an',
-  km: 'km', density: 'hab./km²', num: '', ugl: 'µg/L', m: 'm',
+  pct: '%', aud: 'A$', aud_week: 'A$/week', count: 'number', km: 'km', density: 'people/km²', num: '', m: 'm', years: 'years',
 };
 
 /** Columns the assistant must not touch (identifiers, text, per-year raw series). */
-const SKIP = /^(code|nom|dep|lon|lat|epci|hist_|nhist_|tour_beds_20|second_homes_20|aav_name|town3000_name)/;
+const SKIP = /^(code|nom|dep|lon|lat|council|postcodes|hist_|nhist_)/;
 
 function firstSentence(s = ''): string {
   const i = s.search(/[.:](\s|$)/);
@@ -31,7 +30,7 @@ export const CATALOG: CatalogEntry[] = Object.entries(COLUMNS)
   .map(([id, c]) => ({
     id,
     label: c.label,
-    unit: c.unit === 'bool' ? 'oui/non' : UNIT[c.unit] ?? '',
+    unit: c.unit === 'bool' ? 'yes/no' : UNIT[c.unit] ?? '',
     kind: c.unit === 'bool' ? 'bool' : 'number',
     hint: firstSentence(c.def),
   }));
@@ -49,30 +48,26 @@ export function toStored(column: string, value: number): number {
  * and used to pick which indicators to show it.
  */
 export const CONCEPTS: { words: RegExp; text: string; columns: string[] }[] = [
-  { words: /pollu|contamin|pfas|pesticid|sol|potager|poule/i, columns: ['pesticide_breach_share', 'pfas_max', 'sis_count', 'polluted_site_count', 'casias_per_km2'],
-    text: 'pas de pollution = pesticide_breach_share max 0, pfas_max max 0.1, sis_count max 0, polluted_site_count max 0, casias_per_km2 max 1' },
-  { words: /feu|incendi|fire/i, columns: ['risk_forest_fire', 'ppr_fire'], text: 'pas de risque de feu = risk_forest_fire is_false' },
-  { words: /eau|water|sécheresse|secheresse|restriction|robinet/i, columns: ['water_limit_breach_share', 'crisis_days_avg', 'drought_days_avg', 'pesticide_breach_share', 'pfas_max'],
-    text: 'pas de problème d’eau = water_limit_breach_share max 0, crisis_days_avg max 10, drought_days_avg max 30, pesticide_breach_share max 0' },
-  { words: /inond|flood|crue/i, columns: ['catnat_flood', 'ppr_flood', 'risk_flood', 'risk_marine_flood'], text: 'aucune inondation enregistrée = catnat_flood max 0 ; pas de plan inondation = ppr_flood is_false' },
-  { words: /forêt|foret|bois|forest|arbre/i, columns: ['forest_around_share', 'forest_share'], text: 'près d’une forêt = forest_around_share min 30' },
-  { words: /montagne|colline|vallon|relief|plat|altitude|mountain|hill/i, columns: ['relief_m', 'alt_mean'], text: 'terrain non plat / collines = relief_m min 100 ; montagne = relief_m min 400' },
-  { words: /habitant|village|ville|population|taille/i, columns: ['pop', 'town3000_km'], text: 'village = pop max 2000 ; ville proche de 3 000 hab. = town3000_km max 10' },
-  { words: /croiss|grandi|augment|gagne|population/i, columns: ['pop_cagr_11y'], text: 'population en croissance = pop_cagr_11y min 0' },
-  { words: /touris|vacance|saison|résidence secondaire/i, columns: ['tourist_beds_per_1000', 'tour_beds_change', 'second_homes_change', 'second_home_share'],
-    text: 'touristique = tourist_beds_per_1000 min 100 ou second_home_share min 15 ; le devient = second_homes_change min 10 ou tour_beds_change min 5' },
-  { words: /risque|risk/i, columns: ['risk_count'], text: 'risques signalés = risk_count (0 à 9)' },
-  { words: /prix|cher|coût|cout|baiss|hausse|appart|maison|price/i, columns: ['price_m2', 'price_trend_house', 'price_trend_apt', 'price_trend_3y'],
-    text: 'prix des appartements en baisse sur 3 ans = price_trend_apt max 0 ; maisons = price_trend_house max 0' },
-  { words: /parking|garage|box|stationnement|place de|voiture/i, columns: ['parking_price', 'n_parking_sales', 'parking_gross_yield', 'parking_gap_share', 'car_share', 'parking_spot_share', 'zfe_share'],
-    text: 'investir dans un parking/garage = strategy "parking" ; demande = parking_gap_share min 10 ; prix d’une place = parking_price ; rendement parking = parking_gross_yield (nécessite un loyer saisi)' },
-  { words: /rendement|rentab|loyer|invest|cash/i, columns: ['gross_yield', 'net_yield', 'cashflow_month', 'rent_m2'], text: 'rendement en %' },
-  { words: /médecin|medecin|santé|sante|service|école|ecole/i, columns: ['apl_gp', 'services_km', 'college_ips'], text: 'désert médical = apl_gp < 2.5' },
-  { words: /crime|cambriol|sécurité|securite|violence/i, columns: ['crime_burglary', 'crime_violence'], text: 'pour 1000 logements / habitants' },
-  { words: /air|ozone|particule/i, columns: [], text: 'la qualité de l’air n’est pas encore disponible' },
+  { words: /fire|bushfire|bush/i, columns: ['bushfire_high_share', 'bushfire_med_high_share', 'bushfire_medium_share'],
+    text: 'no bushfire risk = bushfire_med_high_share max 0; little = bushfire_med_high_share max 10' },
+  { words: /flood|sea|coast|surge|low.?lying|beach/i, columns: ['low_lying_share'], text: 'no coastal flooding = low_lying_share max 5' },
+  { words: /tree|forest|green|bush|park|nature/i, columns: ['forest_around_share', 'forest_share'], text: 'green surroundings = forest_around_share min 30' },
+  { words: /hill|flat|relief|elevation|view/i, columns: ['relief_m', 'alt_mean'], text: 'hilly = relief_m min 80; flat = relief_m max 20' },
+  { words: /cbd|city|commute|close|far|distance|centre|center/i, columns: ['cbd_km'], text: 'close to the city = cbd_km max 10' },
+  { words: /grow|population|people|resident|density|size/i, columns: ['pop', 'pop_cagr', 'density'], text: 'growing = pop_cagr min 1' },
+  { words: /risk/i, columns: ['risk_count'], text: 'risk flags = risk_count (0 to 3)' },
+  { words: /price|cheap|afford|budget|expensive|cost|rise|grow|capital|boom/i, columns: ['price', 'price_trend_5y'],
+    text: 'under a budget = price max 800000 (A$); prices up strongly = price_trend_5y min 80' },
+  { words: /yield|rent|invest|cash|tenant|landlord/i, columns: ['gross_yield', 'net_yield', 'cashflow_month', 'rent_week', 'rent_trend_5y', 'tenant_share'],
+    text: 'yield in %; rents rising = rent_trend_5y min 50' },
+  { words: /crime|safe|burglar|break|theft|violen/i, columns: ['crime_burglary', 'crime_violence', 'crime_theft'],
+    text: 'safe = crime_burglary max 5 (per 1,000 dwellings), crime_violence max 8 (per 1,000 residents)' },
+  { words: /income|wealth|rich|poor|advantag|socio|seifa|family|school/i, columns: ['seifa_irsad', 'seifa_decile_sa', 'median_hh_income_week', 'degree_share'],
+    text: 'well-off area = seifa_decile_sa min 8; schools are not in the data: use web_search' },
+  { words: /unemploy|job|work/i, columns: ['unemployment_rate'], text: 'low unemployment = unemployment_rate max 4' },
 ];
 
-const ALWAYS = ['pop', 'risk_count', 'price_m2', 'pop_cagr_11y'];
+const ALWAYS = ['pop', 'risk_count', 'price', 'pop_cagr'];
 
 /** Indicators relevant to a question (all of them when `all` is set, for large models). */
 export function relevant(question: string, all = false): { entries: CatalogEntry[]; hints: string[] } {
@@ -86,8 +81,8 @@ export function relevant(question: string, all = false): { entries: CatalogEntry
 }
 
 export function describe(entries: CatalogEntry[]): string {
-  return entries.map((c) => `- ${c.id} (${c.label}${c.unit ? `, ${c.unit}` : ''}${c.hint ? ` : ${c.hint}` : ''})`).join('\n');
+  return entries.map((c) => `- ${c.id} (${c.label}${c.unit ? `, ${c.unit}` : ''}${c.hint ? `: ${c.hint}` : ''})`).join('\n');
 }
 
 export const STRATEGY_IDS = STRATEGIES.map((s) => s.id);
-export const STRATEGY_TEXT = STRATEGIES.map((s) => `${s.id} = ${s.label}`).join(' ; ');
+export const STRATEGY_TEXT = STRATEGIES.map((s) => `${s.id} = ${s.label}`).join('; ');

@@ -7,40 +7,34 @@ import { decode, encode } from './url';
 
 describe('good / bad verdicts', () => {
   it('higher-is-better thresholds', () => {
-    expect(judge('gross_yield', 0.07)).toBe('good');
-    expect(judge('gross_yield', 0.05)).toBe(null);
-    expect(judge('gross_yield', 0.04)).toBe('warn');
-    expect(judge('gross_yield', 0.03)).toBe('bad');
-    expect(judge('apl_gp', 2.4)).toBe('bad');
-    expect(judge('pop_cagr_11y', -0.001)).toBe('bad');
+    expect(judge('gross_yield', 0.045)).toBe('good');
+    expect(judge('gross_yield', 0.035)).toBe(null);
+    expect(judge('gross_yield', 0.028)).toBe('warn');
+    expect(judge('gross_yield', 0.02)).toBe('bad');
+    expect(judge('pop_cagr', -0.001)).toBe('bad');
   });
   it('lower-is-better thresholds', () => {
     expect(judge('risk_count', 0)).toBe('good');
-    expect(judge('risk_count', 1)).toBe(null);
-    expect(judge('risk_count', 2)).toBe('warn');
-    expect(judge('risk_count', 3)).toBe('bad');
-    expect(judge('dist_gp_km', 0)).toBe('good');
-    expect(judge('dist_gp_km', 9)).toBe('bad');
+    expect(judge('risk_count', 1)).toBe('warn');
+    expect(judge('risk_count', 2)).toBe('bad');
+    expect(judge('crime_burglary', 2)).toBe('good');
+    expect(judge('crime_burglary', 20)).toBe('bad');
   });
-  it('booleans and missing values', () => {
-    expect(judge('coast_retreat_decree', true)).toBe('bad');
-    expect(judge('coast_retreat_decree', false)).toBe(null);
-    expect(judge('zone_tendue', true)).toBe(null);
-    expect(judge('apl_gp', null)).toBe(null);
-    expect(judge('rent_confidence', 'low')).toBe('bad');
+  it('missing values', () => {
+    expect(judge('seifa_irsad', null)).toBe(null);
+    expect(judge('council', 'Adelaide')).toBe(null);
   });
 });
 
-describe('french formatting and help coverage', () => {
-  it('formats numbers the French way', () => {
-    expect(fmt('price_m2', 2510).replace(/\s/g, ' ')).toBe('2 510 €');
-    expect(fmt('gross_yield', 0.059).replace(/\s/g, ' ')).toBe('5,9 %');
-    expect(fmt('zone_tendue', true)).toBe('oui');
-    expect(fmt('rent_confidence', 'high')).toBe('élevée');
+describe('formatting and help coverage', () => {
+  it('formats numbers the Australian way', () => {
+    expect(fmt('price', 912500)).toBe('$912,500');
+    expect(fmt('rent_week', 650)).toBe('$650/wk');
+    expect(fmt('gross_yield', 0.0372)).toBe('3.7%');
   });
-  it('writes CSV values for French Excel', () => {
-    expect(csvValue(0.0592)).toBe('0,0592');
-    expect(csvValue('a;b')).toBe('"a;b"');
+  it('writes CSV values', () => {
+    expect(csvValue(0.0592)).toBe('0.0592');
+    expect(csvValue('a,b')).toBe('"a,b"');
   });
   it('every shown column, filter and weight has an explanation', () => {
     for (const st of STRATEGIES) {
@@ -111,38 +105,37 @@ describe('evaluate', () => {
 });
 
 describe('derive', () => {
-  it('maps type-specific columns and counts risks', () => {
-    const [d] = derive([row('a', { price_m2_house: 2000, gross_yield_house: 0.06, ppr_flood: true, radon_class: 3, catnat_flood: 6, drought_days_avg: 10 })], 'house');
-    expect(d.price_m2).toBe(2000);
-    expect(d.gross_yield).toBe(0.06);
-    expect(d.risk_count).toBe(3);
+  it('maps house columns and counts risks', () => {
+    const [d] = derive([row('a', { price_median_house: 800000, gross_yield_house: 0.04, bushfire_high_share: 0.6, bushfire_med_high_share: 0.9, low_lying_share: 0 })]);
+    expect(d.price).toBe(800000);
+    expect(d.gross_yield).toBe(0.04);
+    expect(d.risk_count).toBe(2);
   });
 });
 
 describe('url', () => {
   it('round-trips changed filters and weights', () => {
-    const p = preset('short');
-    p.filters[0].value = 250;
+    const p = preset('growth');
+    p.filters[0].value = 2500;
     p.filters[1].enabled = true;
     p.signals[0].weight = 5;
-    const h = encode({ strategy: 'short', type: 'apt', filters: p.filters, signals: p.signals, selected: '33529' });
+    const h = encode({ strategy: 'growth', type: 'house', filters: p.filters, signals: p.signals, selected: '40001' });
     const back = decode(h);
-    expect(back.strategy).toBe('short');
-    expect(back.type).toBe('apt');
-    expect(back.filters[0].value).toBe(250);
+    expect(back.strategy).toBe('growth');
+    expect(back.filters[0].value).toBe(2500);
     expect(back.filters[1].enabled).toBe(true);
     expect(back.signals[0].weight).toBe(5);
-    expect(back.selected).toBe('33529');
+    expect(back.selected).toBe('40001');
   });
   it('falls back to the preset on unknown input', () => {
     expect(decode('#garbage').strategy).toBe('long');
   });
-  it('round-trips several départements and ignores invalid codes', () => {
+  it('round-trips several councils and ignores invalid codes', () => {
     const p = preset('live');
-    const h = encode({ strategy: 'live', type: 'house', filters: p.filters, signals: p.signals, selected: null, scopes: ['40', '33', '2A'] });
-    expect(h).toContain('z=2A,33,40');
-    expect(decode(h).scopes).toEqual(['2A', '33', '40']);
-    expect(decode('#v=1&s=live&z=33,zz,999,2b').scopes).toEqual(['2B', '33']);
+    const h = encode({ strategy: 'live', type: 'house', filters: p.filters, signals: p.signals, selected: null, scopes: ['47140', '40070'] });
+    expect(h).toContain('z=40070,47140');
+    expect(decode(h).scopes).toEqual(['40070', '47140']);
+    expect(decode('#v=1&s=live&z=40070,zz,999').scopes).toEqual(['40070']);
     expect(decode('#v=1&s=live').scopes).toEqual([]);
   });
 });

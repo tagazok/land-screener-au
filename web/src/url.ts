@@ -10,7 +10,7 @@ export interface UrlState {
   filters: FilterDef[];
   signals: SignalDef[];
   selected: string | null;
-  /** Département codes to show; empty = all of France. */
+  /** Council (LGA 2025) codes to show; empty = all of Greater Adelaide. */
   scopes?: string[];
   /** Financing assumptions that differ from the defaults, encoded by finance.ts. */
   finance?: string;
@@ -18,8 +18,6 @@ export interface UrlState {
   custom?: FilterDef[];
   /** Score groups to keep (A-E); empty = all. */
   tiers?: Tier[];
-  /** Per-commune parking rents, encoded by finance.ts (encodeRents). */
-  rents?: string;
 }
 
 const OPS = ['min', 'max', 'isTrue', 'isFalse'] as const;
@@ -53,7 +51,6 @@ export function encode(st: UrlState): string {
   const p = new URLSearchParams();
   p.set('v', '1');
   p.set('s', st.strategy);
-  if (st.type !== base.type) p.set('t', st.type);
   for (const f of st.filters) {
     const b = base.filters.find((x) => x.id === f.id);
     if (!b || b.enabled !== f.enabled || b.value !== f.value) {
@@ -65,12 +62,11 @@ export function encode(st: UrlState): string {
     if (!b || b.weight !== s.weight) p.set(`w.${s.id}`, String(s.weight));
   }
   if (st.selected) p.set('c', st.selected);
-  // Commas stay readable in the hash: #…&z=33,40,64
+  // Commas stay readable in the hash: #…&z=40070,47140
   if (st.scopes?.length) p.set('z', [...st.scopes].sort().join(','));
   if (st.finance) p.set('fi', st.finance);
   if (st.custom?.length) p.set('x', encodeCustom(st.custom));
   if (st.tiers?.length) p.set('g', st.tiers.join(''));
-  if (st.rents) p.set('pr', st.rents);
   return p.toString().replace(/%2C/g, ',').replace(/%3A/g, ':').replace(/%7E/g, '~');
 }
 
@@ -80,14 +76,13 @@ export function decode(hash: string): UrlState {
   const st: Strategy = preset(sid);
   const state: UrlState = {
     strategy: st.id,
-    type: p.get('t') === 'apt' || p.get('t') === 'house' ? (p.get('t') as PropertyType) : st.type,
+    type: st.type,
     filters: st.filters,
     signals: st.signals,
     selected: p.get('c'),
-    scopes: [...new Set((p.get('z') ?? '').split(',').map((s) => s.trim().toUpperCase()).filter((s) => /^(\d{2}|2[AB])$/.test(s)))].sort(),
+    scopes: [...new Set((p.get('z') ?? '').split(',').map((s) => s.trim()).filter((s) => /^\d{5}$/.test(s)))].sort(),
     finance: p.get('fi') ?? undefined,
     custom: decodeCustom(p.get('x'), (c) => c in COLUMNS),
-    rents: p.get('pr') ?? undefined,
     tiers: [...new Set((p.get('g') ?? '').toUpperCase().split('').filter((t) => 'ABCDE'.includes(t)))].sort() as Tier[],
   };
   if (p.get('v') !== '1') return state;

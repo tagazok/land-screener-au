@@ -34,9 +34,9 @@ interface Msg {
 }
 
 const EXAMPLES = [
-  'Masque les communes avec plus de 3 risques',
-  'Montre les communes où le prix des appartements a baissé en 3 ans',
-  'Je veux vivre dans un village près d’une forêt, en colline, sans pollution ni inondation, avec une ville de 3 000 habitants à côté',
+  'Hide suburbs with more than 1 risk flag',
+  'Where can I buy a house under $800k within 15 km of the CBD?',
+  'I want a green, hilly suburb with low crime and no bushfire risk',
 ];
 
 /**
@@ -44,9 +44,9 @@ const EXAMPLES = [
  * (no scripts, styles, images, iframes or forms); links open in a new tab.
  */
 function renderMarkdown(text: string, communes: Commune[] = []) {
-  // The model writes {{annonces:CODE}}; the app swaps in links it builds itself, only for communes it sent.
+  // The model writes {{listings:CODE}}; the app swaps in links it builds itself, only for suburbs it sent.
   const byCode = new Map(communes.map((c) => [c.code, c]));
-  const withAds = text.replace(/\{\{\s*annonces\s*:\s*([0-9AB]{5})\s*\}\}/gi, (_, code: string) => {
+  const withAds = text.replace(/\{\{\s*(?:listings|annonces)\s*:\s*(\d{5})\s*\}\}/gi, (_, code: string) => {
     const c = byCode.get(code.toUpperCase());
     return c?.ads?.length ? `leboncoin : ${c.ads.map((a) => `[${a.label}](${a.url})`).join(' · ')}` : '';
   });
@@ -68,7 +68,7 @@ function renderMarkdown(text: string, communes: Commune[] = []) {
 /**
  * Turn each name of a commune the model was given into a link that opens its panel. Works on
  * text nodes of the already-sanitized answer, so no model text ever becomes markup. Longest
- * names first, so "Saint-Martin-de-Ré" is not split by "Saint-Martin".
+ * names first, so "Port Noarlunga South" is not split by "Port Noarlunga".
  */
 function linkCommunes(root: HTMLElement, communes: Commune[]) {
   if (!communes.length) return;
@@ -95,7 +95,7 @@ function linkCommunes(root: HTMLElement, communes: Commune[]) {
       a.className = 'commune';
       a.href = '#';
       a.dataset.code = byName.get(m[1])!;
-      a.title = 'Ouvrir la fiche de la commune';
+      a.title = 'Open the suburb panel';
       a.textContent = m[1];
       frag.append(a);
       last = m.index! + m[1].length;
@@ -125,7 +125,7 @@ export class AiChat extends LitElement {
     super.connectedCallback();
     nanoAvailability().then((s) => (this.nano = s));
     try {
-      const d = JSON.parse(localStorage.getItem('lsfr-chat-dock') ?? '{}');
+      const d = JSON.parse(localStorage.getItem('lsau-chat-dock') ?? '{}');
       if (typeof d.width === 'number') this.width = d.width;
       if (d.docked) { this.open = true; this.setDocked(true); }
     } catch { /* ignore */ }
@@ -146,7 +146,7 @@ export class AiChat extends LitElement {
   /** Tell the app how much room the docked panel takes, so the page moves right. */
   private emitDock() {
     this.dispatchEvent(new CustomEvent('chat-dock', { detail: { width: this.open && this.docked ? this.width : 0 }, bubbles: true, composed: true }));
-    localStorage.setItem('lsfr-chat-dock', JSON.stringify({ docked: this.docked, width: this.width }));
+    localStorage.setItem('lsau-chat-dock', JSON.stringify({ docked: this.docked, width: this.width }));
   }
 
   private setDocked(on: boolean) {
@@ -189,26 +189,26 @@ export class AiChat extends LitElement {
     try {
       this.busy = 'Je comprends la demande…';
       const before = this.history();
-      const plan = await a.plan(before ? `Échange précédent :\n${before}\n\nNouvelle demande : ${text}` : text, this.abort.signal);
+      const plan = await a.plan(before ? `Previous exchange:\n${before}\n\nNew request: ${text}` : text, this.abort.signal);
       const { applied, dropped } = this.host.applyPlan(plan);
-      const chips = [...applied, ...dropped.map((d) => `ignoré : ${d}`)];
+      const chips = [...applied, ...dropped.map((d) => `ignored: ${d}`)];
       if (plan.mode === 'answer') {
-        this.busy = 'Je rédige la réponse…';
+        this.busy = 'Writing the answer…';
         const prev = this.history();
         const { count, text: facts, communes } = this.host.facts(`${text} ${prev}`);
-        const question = prev ? `Échange précédent :\n${prev}\n\nNouvelle question : ${text}` : text;
+        const question = prev ? `Previous exchange:\n${prev}\n\nNew question: ${text}` : text;
         // Route: questions the data cannot answer (news, local life…) go to the web-search model.
         if (plan.web_search && a.webAnswer) {
           this.busy = 'Je cherche sur le web…';
           const web = await a.webAnswer(question, facts, this.abort.signal);
-          this.msgs = [...this.msgs, { role: 'assistant', text: web.text, chips: [...chips, '🌐 recherche web'], communes, sources: web.sources }];
+          this.msgs = [...this.msgs, { role: 'assistant', text: web.text, chips: [...chips, '🌐 web search'], communes, sources: web.sources }];
         } else {
-          const answer = count ? await a.answer(question, facts, this.abort.signal) : 'Aucune commune ne passe tous ces critères. Retirez un filtre (bouton × sur les étiquettes en haut) pour élargir la recherche.';
-          const note = plan.web_search ? '\n\n_Cette question demanderait une recherche sur le web : activez-la dans les réglages ⚙ (Amazon Bedrock)._' : '';
-          this.msgs = [...this.msgs, { role: 'assistant', text: `${answer}\n\n${count} communes retenues.${note}`, chips, communes }];
+          const answer = count ? await a.answer(question, facts, this.abort.signal) : 'No suburb passes all these criteria. Remove a filter (the × on the labels at the top) to widen the search.';
+          const note = plan.web_search ? '\n\n_This question needs a web search: turn it on in the settings ⚙ (Amazon Bedrock)._' : '';
+          this.msgs = [...this.msgs, { role: 'assistant', text: `${answer}\n\n${count} suburbs pass.${note}`, chips, communes }];
         }
       } else {
-        this.msgs = [...this.msgs, { role: 'assistant', text: plan.summary || 'C’est fait.', chips }];
+        this.msgs = [...this.msgs, { role: 'assistant', text: plan.summary || 'Done.', chips }];
       }
       console.info(`[ai] ${this.settings.provider} ${(performance.now() - t0).toFixed(0)} ms`, plan);
     } catch (e) {
@@ -243,18 +243,18 @@ export class AiChat extends LitElement {
 
   private nanoText(): string {
     switch (this.nano) {
-      case 'available': return 'Modèle Gemini Nano prêt, sur votre appareil.';
-      case 'downloadable': return 'Gemini Nano sera téléchargé par Chrome à la première question (plusieurs Go, une seule fois).';
-      case 'downloading': return 'Chrome télécharge Gemini Nano…';
-      case 'unavailable': return 'Gemini Nano n’est pas disponible sur cet appareil (mémoire, espace disque ou langue).';
-      case 'unsupported': return 'Ce navigateur n’a pas de modèle intégré : il faut Chrome sur ordinateur (version 148 ou plus). Vous pouvez utiliser une clé Amazon Bedrock dans les réglages.';
-      default: return 'Vérification du modèle…';
+      case 'available': return 'Gemini Nano is ready, on your device.';
+      case 'downloadable': return 'Chrome will download Gemini Nano at the first question (several GB, once).';
+      case 'downloading': return 'Chrome is downloading Gemini Nano…';
+      case 'unavailable': return 'Gemini Nano is not available on this device (memory, disk space or language).';
+      case 'unsupported': return 'This browser has no built-in model: it needs desktop Chrome (version 148 or later). You can use an Amazon Bedrock key in the settings.';
+      default: return 'Checking the model…';
     }
   }
 
   render() {
     if (!this.open) {
-      return html`<button class="fab" @click=${() => this.setOpen(true)} aria-label="Ouvrir l’assistant">✦ Assistant</button>`;
+      return html`<button class="fab" @click=${() => this.setOpen(true)} aria-label="Open the assistant">✦ Assistant</button>`;
     }
     const s = this.settings;
     return html`
@@ -263,40 +263,40 @@ export class AiChat extends LitElement {
           <b>✦ Assistant</b>
           <small title=${s.provider === 'bedrock' ? s.bedrockModel : ''}>${s.provider === 'bedrock' ? `Bedrock · ${s.bedrockModel.replace(/^(us|eu|apac|global)\./, '').replace(/^anthropic\./, '')}` : 'Gemini Nano (local)'}</small>
           <span class="grow"></span>
-          <button class="icon dock" title=${this.docked ? 'Détacher (fenêtre flottante)' : 'Ancrer à gauche de la page'}
-            aria-pressed=${this.docked ? 'true' : 'false'} aria-label=${this.docked ? 'Détacher l’assistant' : 'Ancrer l’assistant à gauche'}
+          <button class="icon dock" title=${this.docked ? 'Undock (floating window)' : 'Dock to the left of the page'}
+            aria-pressed=${this.docked ? 'true' : 'false'} aria-label=${this.docked ? 'Undock the assistant' : 'Dock the assistant to the left'}
             @click=${() => this.setDocked(!this.docked)}>
             <svg viewBox="0 0 20 20" aria-hidden="true">${this.docked
               ? svg`<rect x="3" y="4" width="14" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="9" y="9" width="6" height="5" rx="1" fill="currentColor"/>`
               : svg`<rect x="3" y="4" width="14" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="5" width="5" height="10" fill="currentColor"/>`}</svg>
           </button>
-          <button class="icon" title="Réglages" aria-label="Réglages de l’assistant" @click=${() => (this.settingsOpen = !this.settingsOpen)}>⚙</button>
-          <button class="icon" title="Fermer" aria-label="Fermer l’assistant" @click=${() => this.setOpen(false)}>×</button>
+          <button class="icon" title="Settings" aria-label="Assistant settings" @click=${() => (this.settingsOpen = !this.settingsOpen)}>⚙</button>
+          <button class="icon" title="Close" aria-label="Close the assistant" @click=${() => this.setOpen(false)}>×</button>
         </header>
-        ${this.docked ? html`<div class="resize" role="separator" aria-orientation="vertical" aria-label="Redimensionner l’assistant"
-          title="Glisser pour changer la largeur" @pointerdown=${(e: PointerEvent) => this.startResize(e)}></div>` : nothing}
+        ${this.docked ? html`<div class="resize" role="separator" aria-orientation="vertical" aria-label="Resize the assistant"
+          title="Drag to change the width" @pointerdown=${(e: PointerEvent) => this.startResize(e)}></div>` : nothing}
         ${this.settingsOpen ? this.renderSettings() : nothing}
         <div class="log" aria-live="polite" ?hidden=${this.settingsOpen}>
           ${this.msgs.length ? nothing : html`
-            <p class="muted">${s.provider === 'nano' ? this.nanoText() : 'Les questions sont envoyées à Amazon Bedrock avec votre clé.'}</p>
-            <p class="muted">Décrivez ce que vous cherchez ou demandez un changement de la carte. Exemples :</p>
+            <p class="muted">${s.provider === 'nano' ? this.nanoText() : 'Questions are sent to Amazon Bedrock with your key.'}</p>
+            <p class="muted">Describe what you are looking for, or ask for a change to the map. Examples:</p>
             ${EXAMPLES.map((e) => html`<button class="ex" @click=${() => this.send(e)} ?disabled=${!this.ready}>${e}</button>`)}`}
           ${this.msgs.map((m) => html`
             <div class="msg ${m.role}">
               ${m.role === 'assistant' ? html`<div class="md" @click=${(e: Event) => this.onAnswerClick(e)}>${renderMarkdown(m.text, m.communes)}</div>` : html`<p>${m.text}</p>`}
-              ${m.sources?.length ? html`<div class="sources">Sources : ${m.sources.map((s, i) => html`${i ? ' · ' : ''}<a href=${s.url} target="_blank" rel="noopener noreferrer" title=${s.url}>${s.domain}</a>`)}</div>` : nothing}
+              ${m.sources?.length ? html`<div class="sources">Sources: ${m.sources.map((s, i) => html`${i ? ' · ' : ''}<a href=${s.url} target="_blank" rel="noopener noreferrer" title=${s.url}>${s.domain}</a>`)}</div>` : nothing}
               ${m.chips?.length ? html`<div class="chips">${m.chips.map((c) => html`<span>${c}</span>`)}</div>` : nothing}
             </div>`)}
           ${this.busy ? html`<div class="msg assistant busy"><span class="spinner"></span> ${this.busy}
-            ${this.progress !== null && this.progress < 1 ? html` (téléchargement du modèle ${Math.round(this.progress * 100)} %)` : nothing}
-            <button class="link" @click=${() => this.abort?.abort()}>Arrêter</button></div>` : nothing}
+            ${this.progress !== null && this.progress < 1 ? html` (downloading the model ${Math.round(this.progress * 100)} %)` : nothing}
+            <button class="link" @click=${() => this.abort?.abort()}>Stop</button></div>` : nothing}
         </div>
         <form class="ask" ?hidden=${this.settingsOpen} @submit=${(e: Event) => { e.preventDefault(); this.send(); }}>
-          <textarea rows="2" placeholder=${this.ready ? 'Votre demande…' : 'Assistant indisponible : voir les réglages ⚙'}
+          <textarea rows="2" placeholder=${this.ready ? 'Your request…' : 'Assistant unavailable: see the settings ⚙'}
             .value=${this.draft} ?disabled=${!this.ready || !!this.busy}
             @input=${(e: Event) => (this.draft = (e.target as HTMLTextAreaElement).value)}
             @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.send(); } }}></textarea>
-          <button class="send" type="submit" ?disabled=${!this.ready || !!this.busy || !this.draft.trim()}>Envoyer</button>
+          <button class="send" type="submit" ?disabled=${!this.ready || !!this.busy || !this.draft.trim()}>Send</button>
         </form>
       </section>`;
   }
@@ -313,43 +313,43 @@ export class AiChat extends LitElement {
     return html`
       <form class="settings" @submit=${(e: Event) => this.saveSettings(e)}>
         <section>
-          <h4>Modèle de l’assistant</h4>
+          <h4>Assistant model</h4>
           <div class="choices" role="radiogroup">
             <label class="choice ${!bedrock ? 'on' : ''}">
               <input type="radio" name="provider" value="nano" ?checked=${!bedrock} @change=${() => (this.draftProvider = 'nano')}>
-              <span><b>Gemini Nano, dans Chrome</b><small>Local et gratuit : rien ne sort de l’ordinateur. Demandes courtes.</small></span>
+              <span><b>Gemini Nano, in Chrome</b><small>Local and free: nothing leaves the computer. Short requests.</small></span>
             </label>
             <label class="choice ${bedrock ? 'on' : ''}">
               <input type="radio" name="provider" value="bedrock" ?checked=${bedrock} @change=${() => (this.draftProvider = 'bedrock')}>
-              <span><b>Amazon Bedrock</b><small>Avec votre clé d’API. Meilleur pour les demandes longues, et peut chercher sur le web.</small></span>
+              <span><b>Amazon Bedrock</b><small>With your API key. Better for long requests, and can search the web.</small></span>
             </label>
           </div>
         </section>
 
         <section ?hidden=${!bedrock}>
-          <h4>Connexion à Bedrock</h4>
-          <label class="field">Clé d’API<input name="key" type="password" autocomplete="off" .value=${s.bedrockKey} placeholder="ABSK…"></label>
+          <h4>Bedrock connection</h4>
+          <label class="field">API key<input name="key" type="password" autocomplete="off" .value=${s.bedrockKey} placeholder="ABSK…"></label>
           <div class="row">
-            <label class="field narrow">Région<input name="region" .value=${s.bedrockRegion}></label>
-            <label class="field">Modèle (critères et réponses)<input name="model" .value=${s.bedrockModel} placeholder=${DEFAULT_SETTINGS.bedrockModel}></label>
+            <label class="field narrow">Region<input name="region" .value=${s.bedrockRegion}></label>
+            <label class="field">Model (criteria and answers)<input name="model" .value=${s.bedrockModel} placeholder=${DEFAULT_SETTINGS.bedrockModel}></label>
           </div>
-          <p class="hint">La clé reste dans ce navigateur, n’est envoyée qu’à Amazon Bedrock et n’apparaît pas dans le lien de partage. Préférez une clé de courte durée, limitée à Bedrock.</p>
+          <p class="hint">The key stays in this browser, is only sent to Amazon Bedrock and never appears in the share link. Prefer a short-term key limited to Bedrock.</p>
         </section>
 
         <section ?hidden=${!bedrock}>
           <h4>Recherche web</h4>
           <label class="toggle">
             <input type="checkbox" name="web" ?checked=${web} @change=${(e: Event) => (this.draftWeb = (e.target as HTMLInputElement).checked)}>
-            <span>Chercher sur le web quand les données ne suffisent pas <small>(actualités, projets, vie locale…)</small></span>
+            <span>Search the web when the data is not enough <small>(news, projects, schools, local life…)</small></span>
           </label>
-          <label class="field" ?hidden=${!web}>Modèle de recherche (Amazon Nova, régions US uniquement)
+          <label class="field" ?hidden=${!web}>Search model (Amazon Nova, US regions only)
             <input name="webmodel" .value=${s.webModel} placeholder=${DEFAULT_SETTINGS.webModel}></label>
         </section>
 
         <div class="row end">
-          ${s.bedrockKey && bedrock ? html`<button type="button" class="link" @click=${() => { this.settings = { ...s, bedrockKey: '', provider: 'nano' }; this.draftProvider = null; saveSettings(this.settings); }}>Effacer la clé</button>` : nothing}
-          <button type="button" class="link" @click=${() => { this.settingsOpen = false; this.draftProvider = this.draftWeb = null; }}>Annuler</button>
-          <button type="submit" class="send">Enregistrer</button>
+          ${s.bedrockKey && bedrock ? html`<button type="button" class="link" @click=${() => { this.settings = { ...s, bedrockKey: '', provider: 'nano' }; this.draftProvider = null; saveSettings(this.settings); }}>Clear the key</button>` : nothing}
+          <button type="button" class="link" @click=${() => { this.settingsOpen = false; this.draftProvider = this.draftWeb = null; }}>Cancel</button>
+          <button type="submit" class="send">Save</button>
         </div>
       </form>`;
   }

@@ -1,28 +1,25 @@
-# Land Screener FR
+# Land Screener AU · Greater Adelaide
 
-A screener for the 34,746 communes of metropolitan France, built entirely from French open data. It helps find places to buy property to rent (long, medium or short term), land, or a house to live in.
+Static screener of the 494 suburbs of Greater Adelaide (ABS Greater Capital City Statistical Area 4GADE), built from open data. A fork of Land Screener FR.
 
-Live site: https://tagazok.github.io/land-screener-fr/
+- `pipeline/`: Python (uv). `uv run lsau fetch` downloads the sources into `raw/` (about 60 MB), `uv run lsau build` writes `web/public/data/`.
+- `web/`: Lit + Vite + MapLibre. `npm run dev` (port 5182), `npm run preview` (port 5183), `npm test`.
 
-## How it works
+## Data
 
-- `pipeline/`: Python (uv, Polars). It downloads the open datasets into `raw/` (not committed, about 2 GB) and joins them into one row per commune in `web/public/data/`.
-- `web/`: a static Lit + Vite + TypeScript + MapLibre app with no backend. At startup it loads `communes.json` (every indicator); the map reads `communes.pmtiles` with HTTP range requests.
-- `.github/workflows/pages.yml`: on every push to `main`, runs the tests, builds `web/` and publishes it to GitHub Pages.
+| Theme | Source | Vintage |
+|---|---|---|
+| Suburb, SA2, Greater Adelaide boundaries; councils | ABS ASGS Edition 3 (SAL 2021), LGA 2025 | 2021 / 2025 |
+| House prices (median, sales, 5-year change, yearly history) | SA Valuer-General, metropolitan median house sales | Q1 2015 – Q3 2026 |
+| Rents of new leases (houses, units, 5-year change) | SA private rental report (rental bonds) | Jul 2020 – Jun 2021, Jul 2025 – Jun 2026 |
+| Population, income, tenure, dwellings, cars, unemployment | ABS Census 2021 (Data API) | 2021 |
+| Socio-economic index | ABS SEIFA 2021 (IRSAD) | 2021 |
+| Population growth | ABS ERP by SA2 | 2016 – latest |
+| Crime | SA Police, by suburb | 2025-26 |
+| Bushfire protection areas | Plan SA | 2008-2013 mapping |
+| Relief, low-lying land | Copernicus DEM GLO-90 | 2021 |
+| Tree cover | ESA WorldCover 2021 | 2021 |
 
-## Commands
+Not covered: unit prices (the Valuer-General publishes houses only), house prices in Mount Barker, Light, Adelaide Plains and Barossa councils, schools, flood maps, council rates and land tax per suburb.
 
-```sh
-cd pipeline
-uv run lsfr fetch                   # download sources (resumable)
-uv run lsfr build                   # rebuild web/public/data
-uv run lsfr summarize --workers 8   # AI summaries (Amazon Bedrock, local AWS profile)
-
-cd ../web
-npm ci && npm run dev               # local dev server
-npx vitest run                      # tests
-```
-
-## Data sources
-
-All are open data, mostly under Licence Ouverte 2.0: DVF (sale prices), ANIL rent map, INSEE (census, income, communes), GASPAR / Géorisques (risks), BRGM (clay shrink-swell), VigiEau, DREES, ARCEP, ADEME (DPE energy ratings), SSMSI (crime), Éducation nationale (IPS, IVAL), MESR. The full list with vintages is in `web/public/data/metadata.json` and in the app.
+Strategies: long-term rental (with an SA stamp duty and cash-flow simulation), capital growth, live there.

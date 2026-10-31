@@ -1,71 +1,70 @@
-// Rental investment simulation per commune: purchase cost, net yield and
-// monthly cash flow under the user's financing assumptions.
+// Rental investment simulation per suburb: purchase cost, net yield and monthly
+// cash flow for the median house, under the user's financing assumptions.
 //
-// Everything is an estimate built from commune medians; the side panel shows
-// each step so the user can check the arithmetic.
+// Everything is an estimate built from suburb medians; the side panel shows each
+// step so the user can check the arithmetic.
 
 import type { Row } from './engine';
 
 export interface Finance {
-  /** Living area simulated, m². */
-  surface: number;
-  /** Down payment as a share of the total cost (0..1). */
+  /** Deposit as a share of the total cost (0..1). */
   deposit: number;
-  /** Loan interest rate per year (0.035 = 3.5 %). */
+  /** Loan interest rate per year (0.06 = 6 %). */
   rate: number;
-  /** Loan duration in years. */
+  /** Loan term in years. */
   years: number;
-  /** Notary fees as a share of the price (older property ≈ 7.5 %). */
-  notary: number;
-  /** Non-recoverable charges, maintenance, insurance, as a share of the rent. */
+  /** Other purchase costs, A$: transfer and mortgage registration, conveyancing, inspections. */
+  otherCosts: number;
+  /** Property management, letting fees and maintenance, as a share of the rent. */
   charges: number;
-  /** Months per year without a tenant. */
+  /** Weeks per year without a tenant. */
   vacancy: number;
-  /** Rent of one parking space or garage, €/month; 0 = not set (no public data on parking rents). */
-  parkingRent: number;
-  /** Property tax of one parking space, €/year (unknown per commune: entered by the user). */
-  parkingTax: number;
-  /** Rent of one space in specific communes (INSEE code -> €/month), replacing parkingRent there. */
-  parkingRents?: Record<string, number>;
-}
-
-/** The rent used for one commune: its own if the user set one, else the general rent. */
-export const parkingRentFor = (code: string, f: Finance): number => f.parkingRents?.[code] ?? f.parkingRent;
-
-/** Per-commune rents in the share link: "33063:110,69123:120". */
-export function encodeRents(r: Record<string, number> | undefined): string {
-  return Object.entries(r ?? {}).map(([c, v]) => `${c}:${v}`).join(',');
-}
-
-export function decodeRents(s: string | null | undefined): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const part of (s ?? '').split(',')) {
-    const [c, v] = part.split(':');
-    if (/^(\d{5}|2[AB]\d{3})$/.test(c ?? '') && Number.isFinite(Number(v)) && Number(v) > 0) out[c] = Number(v);
-  }
-  return out;
+  /** Yearly holding costs, A$: council rates, emergency services levy, water supply, land tax, insurance. */
+  holding: number;
 }
 
 export const DEFAULT_FINANCE: Finance = {
-  surface: 0, // 0 = the ANIL reference size of the property type (92 m² house, 52 m² flat)
   deposit: 0.2,
-  rate: 0.035,
-  years: 20,
-  notary: 0.075,
-  charges: 0.15,
-  vacancy: 1,
-  parkingRent: 0,
-  parkingTax: 0,
+  rate: 0.06,
+  years: 30,
+  otherCosts: 5000,
+  charges: 0.12,
+  vacancy: 2,
+  holding: 5000,
 };
 
-export interface ParkingSimulation {
+/**
+ * South Australian stamp duty on a transfer of land, general rates (RevenueSA):
+ * no first-home or off-the-plan concession, no foreign-ownership surcharge.
+ */
+const DUTY: [number, number, number][] = [
+  // [threshold, duty at threshold, marginal rate above it]
+  [500000, 21330, 0.055],
+  [300000, 11330, 0.05],
+  [250000, 8955, 0.0475],
+  [200000, 6830, 0.0425],
+  [100000, 2830, 0.04],
+  [50000, 1080, 0.035],
+  [30000, 480, 0.03],
+  [12000, 120, 0.02],
+  [0, 0, 0.01],
+];
+
+export function stampDuty(price: number): number {
+  if (!(price > 0)) return 0;
+  const [t, base, rate] = DUTY.find(([th]) => price > th) ?? DUTY[DUTY.length - 1];
+  return Math.round(base + (price - t) * rate);
+}
+
+export interface Simulation {
   price: number;
-  notaryFees: number;
+  stampDuty: number;
+  otherCosts: number;
   totalCost: number;
   rentYear: number;
   vacancyLoss: number;
   charges: number;
-  propertyTax: number;
+  holding: number;
   netIncome: number;
   grossYield: number;
   netYield: number;
@@ -74,45 +73,7 @@ export interface ParkingSimulation {
   cashflowMonth: number;
 }
 
-/** One parking space at the commune's median DVF price, with the rent the user entered. */
-export function simulateParking(row: Row, f: Finance): ParkingSimulation | null {
-  const price = row.parking_price;
-  const rent = parkingRentFor(row.code, f);
-  if (typeof price !== 'number' || rent <= 0) return null;
-  const notaryFees = price * f.notary;
-  const totalCost = price + notaryFees;
-  const rentYear = rent * 12;
-  const vacancyLoss = rentYear * (f.vacancy / 12);
-  const charges = rentYear * f.charges;
-  const netIncome = rentYear - vacancyLoss - charges - f.parkingTax;
-  const loan = totalCost * (1 - f.deposit);
-  const mp = monthlyPayment(loan, f.rate, f.years);
-  return {
-    price, notaryFees, totalCost, rentYear, vacancyLoss, charges, propertyTax: f.parkingTax, netIncome,
-    grossYield: rentYear / price, netYield: netIncome / totalCost, loan, monthlyPayment: mp, cashflowMonth: netIncome / 12 - mp,
-  };
-}
-
-/** ANIL rent references: the rent per m² is predicted for these sizes. */
-export const REFERENCE_SURFACE = { house: 92, apt: 52 } as const;
-
-export interface Simulation {
-  surface: number;
-  price: number;
-  notaryFees: number;
-  totalCost: number;
-  rentYear: number;
-  vacancyLoss: number;
-  charges: number;
-  propertyTax: number;
-  netIncome: number;
-  netYield: number;
-  loan: number;
-  monthlyPayment: number;
-  cashflowMonth: number;
-}
-
-/** Monthly payment of a fixed-rate loan (French "mensualité", insurance excluded). */
+/** Monthly repayment of a principal-and-interest loan. */
 export function monthlyPayment(principal: number, rate: number, years: number): number {
   const n = years * 12;
   const r = rate / 12;
@@ -121,43 +82,33 @@ export function monthlyPayment(principal: number, rate: number, years: number): 
   return (principal * r) / (1 - (1 + r) ** -n);
 }
 
-export function simulate(row: Row, type: 'house' | 'apt', f: Finance): Simulation | null {
-  const pm2 = row[`price_m2_${type}`];
-  const rm2 = row[`rent_m2_${type}`];
-  if (typeof pm2 !== 'number' || typeof rm2 !== 'number') return null;
-  const surface = f.surface > 0 ? f.surface : REFERENCE_SURFACE[type];
-  const price = pm2 * surface;
-  const notaryFees = price * f.notary;
-  const totalCost = price + notaryFees;
-  const rentYear = rm2 * surface * 12;
-  const vacancyLoss = rentYear * (f.vacancy / 12);
-  const charges = rentYear * f.charges;
-  const tax = row.tfpb_total_avg_eur;
-  const propertyTax = typeof tax === 'number' ? tax : 0;
-  const netIncome = rentYear - vacancyLoss - charges - propertyTax;
+export function simulate(row: Row, f: Finance): Simulation | null {
+  const price = row.price_median_house;
+  const week = row.rent_week_house;
+  if (typeof price !== 'number' || typeof week !== 'number') return null;
+  const duty = stampDuty(price);
+  const totalCost = price + duty + f.otherCosts;
+  const rentYear = week * 52;
+  const vacancyLoss = week * f.vacancy;
+  const charges = (rentYear - vacancyLoss) * f.charges;
+  const netIncome = rentYear - vacancyLoss - charges - f.holding;
   const loan = totalCost * (1 - f.deposit);
   const mp = monthlyPayment(loan, f.rate, f.years);
   return {
-    surface, price, notaryFees, totalCost, rentYear, vacancyLoss, charges, propertyTax, netIncome,
-    netYield: netIncome / totalCost,
-    loan, monthlyPayment: mp,
-    cashflowMonth: netIncome / 12 - mp,
+    price, stampDuty: duty, otherCosts: f.otherCosts, totalCost, rentYear, vacancyLoss, charges, holding: f.holding, netIncome,
+    grossYield: rentYear / price, netYield: netIncome / totalCost, loan, monthlyPayment: mp, cashflowMonth: netIncome / 12 - mp,
   };
 }
 
-/** Adds purchase_price, net_yield and cashflow_month columns for the given property type. */
-export function withFinance(rows: Row[], type: 'house' | 'apt', f: Finance): Row[] {
+/** Adds purchase_price, net_yield and cashflow_month columns. */
+export function withFinance(rows: Row[], f: Finance): Row[] {
   return rows.map((r) => {
-    const s = simulate(r, type, f);
-    const p = simulateParking(r, f);
+    const s = simulate(r, f);
     return {
       ...r,
       purchase_price: s ? Math.round(s.totalCost) : null,
       net_yield: s ? s.netYield : null,
       cashflow_month: s ? Math.round(s.cashflowMonth) : null,
-      parking_gross_yield: p ? p.grossYield : null,
-      parking_net_yield: p ? p.netYield : null,
-      parking_cashflow_month: p ? Math.round(p.cashflowMonth) : null,
     };
   });
 }

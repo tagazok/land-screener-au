@@ -1,9 +1,10 @@
-// Links to listing sites, built by the app from the commune's name and postal code
+// Links to listing sites, built by the app from the suburb's name and postcode
 // (never written by the AI model, which tends to invent URL formats).
 //
-// leboncoin search URLs: /recherche?category=<9 sale | 10 rental>&locations=<Name>_<postcode>
-// and real_estate_type=<1 house | 2 flat | 3 land>. Written from known public URLs, not from
-// leboncoin documentation: check one link by hand if leboncoin changes its format.
+// Formats written from known public URLs, not from site documentation:
+//   realestate.com.au  /buy/property-house-in-<suburb>,+sa+<postcode>/list-1
+//   domain.com.au      /sale/<suburb>-sa-<postcode>/house/
+// Check one link by hand if a site changes its format.
 
 import type { Row } from './engine';
 
@@ -16,14 +17,15 @@ export const firstPostcode = (row: Row): string | null =>
   typeof row.postcodes === 'string' && row.postcodes ? row.postcodes.split(' ')[0] : null;
 
 export function adLinks(row: Row): AdLink[] {
-  const cp = firstPostcode(row);
-  if (!cp) return [];
-  const loc = encodeURIComponent(`${row.nom}_${cp}`).replace(/%20/g, '+');
-  const base = `https://www.leboncoin.fr/recherche?locations=${loc}`;
+  const pc = firstPostcode(row);
+  if (!pc) return [];
+  const name = String(row.nom).toLowerCase();
+  const rea = `${encodeURIComponent(name).replace(/%20/g, '+')},+sa+${pc}`;
+  const dom = `${name.replace(/[^a-z0-9]+/g, '-')}-sa-${pc}`;
   return [
-    { label: 'Maisons à vendre', url: `${base}&category=9&real_estate_type=1` },
-    { label: 'Appartements à vendre', url: `${base}&category=9&real_estate_type=2` },
-    { label: 'Terrains', url: `${base}&category=9&real_estate_type=3` },
-    { label: 'Locations', url: `${base}&category=10` },
+    { label: 'Houses for sale (realestate.com.au)', url: `https://www.realestate.com.au/buy/property-house-in-${rea}/list-1` },
+    { label: 'Houses for rent (realestate.com.au)', url: `https://www.realestate.com.au/rent/property-house-in-${rea}/list-1` },
+    { label: 'Houses for sale (Domain)', url: `https://www.domain.com.au/sale/${dom}/house/` },
+    { label: 'Houses for rent (Domain)', url: `https://www.domain.com.au/rent/${dom}/house/` },
   ];
 }

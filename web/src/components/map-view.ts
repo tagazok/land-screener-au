@@ -18,7 +18,7 @@ export const TIER_COLORS: Record<Tier | 'fail', string> = {
 export interface Paint {
   color: string;
   strong: boolean;
-  /** Outside the chosen départements: not drawn and not clickable. */
+  /** Outside the chosen councils: not drawn and not clickable. */
   hidden?: boolean;
 }
 
@@ -26,24 +26,17 @@ export type Bounds = [[number, number], [number, number]];
 
 const STYLE_LIGHT = 'https://tiles.openfreemap.org/styles/positron';
 const STYLE_DARK = 'https://tiles.openfreemap.org/styles/dark';
-const FRANCE: Bounds = [[-4.9, 42.3], [8.3, 51.1]];
+const ADELAIDE: Bounds = [[138.43, -35.36], [139.05, -34.49]];
 const SRC = 'communes';
 const LAYER = 'communes'; // tippecanoe layer name
 
-const WMTS = (layer: string, style: string, set: string) =>
-  `https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${layer}&STYLE=${style}&FORMAT=image/png&TILEMATRIXSET=${set}&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`;
-
-/** IGN Géoplateforme background layers (free, no key), drawn under the communes. */
-export const OVERLAYS = {
-  forest: {
-    url: WMTS('IGNF_MASQUE-FORET.2021-2023', 'normal', 'PM_6_16'), minzoom: 6, maxzoom: 16, opacity: 0.85,
-    attribution: '<a href="https://geoservices.ign.fr/" target="_blank">IGN</a> Masque forêt 2021–2023',
-  },
-  relief: {
-    url: WMTS('ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW', 'estompage_grayscale', 'PM_0_15'), minzoom: 0, maxzoom: 15, opacity: 0.55,
-    attribution: '<a href="https://geoservices.ign.fr/" target="_blank">IGN</a> Estompage',
-  },
-} as const;
+/** Shaded relief tiles (Esri World Hillshade, no key), drawn under the suburbs. */
+const HILLSHADE = {
+  url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',
+  attribution: 'Hillshade © <a href="https://www.esri.com/" target="_blank">Esri</a>',
+};
+/** Bushfire protection areas (Plan SA), drawn over the suburb colours. */
+const BUSHFIRE_COLORS = ['match', ['get', 'level'], 'High', '#d7301f', 'Medium', '#fc8d59', '#fdcc8a'] as maplibregl.ExpressionSpecification;
 
 // pmtiles:// URLs are read with HTTP range requests: only visible tiles are fetched.
 const protocol = new Protocol();
@@ -64,16 +57,18 @@ export class MapView extends LitElement {
     `,
   ];
 
-  /** URL of the communes PMTiles file. */
+  /** URL of the suburbs PMTiles file. */
   @property() tiles = '';
+  /** URL of the bushfire protection areas GeoJSON. */
+  @property() bushfire = '';
   @property({ attribute: false }) departements: GeoJSON.FeatureCollection | null = null;
   @property({ attribute: false }) paint: Map<string, Paint> = new Map();
   @property() selected: string | null = null;
   @property({ type: Boolean }) dark = false;
-  /** When set, the map zooms to these bounds (e.g. the chosen département). */
+  /** When set, the map zooms to these bounds (e.g. the chosen councils). */
   @property({ attribute: false }) zoomTo: Bounds | null = null;
-  /** Optional background layers drawn under the communes. */
-  @property({ attribute: false }) overlays: { forest: boolean; relief: boolean } = { forest: false, relief: false };
+  /** Optional layers: bushfire areas (over the suburbs) and shaded relief (under them). */
+  @property({ attribute: false }) overlays: { bushfire: boolean; relief: boolean } = { bushfire: false, relief: false };
 
   private map?: MlMap;
   private styleReady = false;
@@ -84,12 +79,12 @@ export class MapView extends LitElement {
   private sent = new Map<string, string>();
 
   render() {
-    return html`<div id="map" class=${this.dark ? 'dark' : ''} role="region" aria-label="Carte des communes"></div>`;
+    return html`<div id="map" class=${this.dark ? 'dark' : ''} role="region" aria-label="Map of suburbs"></div>`;
   }
 
   firstUpdated() {
     const el = this.renderRoot.querySelector('#map') as HTMLElement;
-    this.map = new maplibregl.Map({ container: el, style: this.dark ? STYLE_DARK : STYLE_LIGHT, bounds: this.zoomTo ?? FRANCE, fitBoundsOptions: { padding: 16 } });
+    this.map = new maplibregl.Map({ container: el, style: this.dark ? STYLE_DARK : STYLE_LIGHT, bounds: this.zoomTo ?? ADELAIDE, fitBoundsOptions: { padding: 16 } });
     this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
     // Re-add our layers whenever the basemap style (light/dark) is (re)loaded.
     this.map.on('style.load', () => {
@@ -98,7 +93,7 @@ export class MapView extends LitElement {
       this.addData();
     });
     // The container can still be sizing itself on the first frame: fit again once the map is ready.
-    this.map.once('load', () => this.map!.fitBounds(this.zoomTo ?? FRANCE, { padding: 16, animate: false }));
+    this.map.once('load', () => this.map!.fitBounds(this.zoomTo ?? ADELAIDE, { padding: 16, animate: false }));
     this.map.on('mousemove', 'fill', (e) => {
       const f = e.features?.[0];
       const code = (f && !this.paint.get(f.properties?.code)?.hidden ? f.properties?.code : undefined) as string | undefined;
@@ -134,10 +129,8 @@ export class MapView extends LitElement {
     const m = this.map;
     if (!m || !this.styleReady || !this.tiles || m.getSource(SRC)) return;
     const abs = new URL(this.tiles, location.href).href;
-    for (const [id, o] of Object.entries(OVERLAYS)) {
-      m.addSource(id, { type: 'raster', tiles: [o.url], tileSize: 256, minzoom: o.minzoom, maxzoom: o.maxzoom, attribution: o.attribution });
-      m.addLayer({ id, type: 'raster', source: id, layout: { visibility: 'none' }, paint: { 'raster-opacity': o.opacity } });
-    }
+    m.addSource('relief', { type: 'raster', tiles: [HILLSHADE.url], tileSize: 256, maxzoom: 16, attribution: HILLSHADE.attribution });
+    m.addLayer({ id: 'relief', type: 'raster', source: 'relief', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.5 } });
     m.addSource(SRC, { type: 'vector', url: `pmtiles://${abs}`, promoteId: { [LAYER]: 'code' } });
     m.addLayer({
       id: 'fill', type: 'fill', source: SRC, 'source-layer': LAYER,
@@ -147,10 +140,15 @@ export class MapView extends LitElement {
       },
     });
     m.addLayer({
-      id: 'line', type: 'line', source: SRC, 'source-layer': LAYER, minzoom: 7,
+      id: 'line', type: 'line', source: SRC, 'source-layer': LAYER, minzoom: 9,
       paint: { 'line-color': this.dark ? '#0b1410' : '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 7, 0.2, 11, 0.8],
         'line-opacity': ['case', ['boolean', ['feature-state', 'hidden'], false], 0, 0.7] },
     });
+    if (this.bushfire) {
+      m.addSource('bushfire', { type: 'geojson', data: new URL(this.bushfire, location.href).href, attribution: 'Bushfire areas: Plan SA' });
+      m.addLayer({ id: 'bushfire', type: 'fill', source: 'bushfire', layout: { visibility: 'none' },
+        paint: { 'fill-color': BUSHFIRE_COLORS, 'fill-opacity': 0.5, 'fill-outline-color': BUSHFIRE_COLORS } });
+    }
     if (this.departements) {
       m.addSource('dep', { type: 'geojson', data: this.departements });
       m.addLayer({
@@ -170,9 +168,9 @@ export class MapView extends LitElement {
     this.repaint();
   }
 
-  /** Lighter commune colours while a background layer is shown, so it stays readable. */
+  /** Lighter suburb colours while a layer is shown, so it stays readable. */
   private fillOpacity(): maplibregl.ExpressionSpecification {
-    const on = this.overlays.forest || this.overlays.relief;
+    const on = this.overlays.bushfire || this.overlays.relief;
     return ['case', ['boolean', ['feature-state', 'hidden'], false], 0,
       ['boolean', ['feature-state', 'strong'], false], on ? 0.45 : 0.82, on ? 0.08 : 0.25];
   }
@@ -180,8 +178,8 @@ export class MapView extends LitElement {
   private applyOverlays() {
     const m = this.map;
     if (!m || !m.getLayer('fill')) return;
-    for (const id of Object.keys(OVERLAYS) as (keyof typeof OVERLAYS)[]) {
-      m.setLayoutProperty(id, 'visibility', this.overlays[id] ? 'visible' : 'none');
+    for (const id of ['bushfire', 'relief'] as const) {
+      if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', this.overlays[id] ? 'visible' : 'none');
     }
     m.setPaintProperty('fill', 'fill-opacity', this.fillOpacity());
   }
@@ -201,14 +199,14 @@ export class MapView extends LitElement {
   }
 
   flyTo(lon: number, lat: number) {
-    this.map?.flyTo({ center: [lon, lat], zoom: Math.max(this.map.getZoom(), 10) });
+    this.map?.flyTo({ center: [lon, lat], zoom: Math.max(this.map.getZoom(), 12) });
   }
 
   updated(changed: Map<string, unknown>) {
     if (!this.map) return;
     if (changed.has('dark') && changed.get('dark') !== undefined) {
       this.styleReady = false;
-      // diff:false forces a full reload so 'style.load' fires and re-adds the communes.
+      // diff:false forces a full reload so 'style.load' fires and re-adds the suburbs.
       this.map.setStyle(this.dark ? STYLE_DARK : STYLE_LIGHT, { diff: false });
       return;
     }
@@ -216,7 +214,7 @@ export class MapView extends LitElement {
     if (changed.has('paint') || changed.has('selected')) this.repaint();
     if (changed.has('overlays')) this.applyOverlays();
     if (changed.has('zoomTo') && changed.get('zoomTo') !== undefined) {
-      this.map.fitBounds(this.zoomTo ?? FRANCE, { padding: 20, duration: 600 });
+      this.map.fitBounds(this.zoomTo ?? ADELAIDE, { padding: 20, duration: 600 });
     }
   }
 }

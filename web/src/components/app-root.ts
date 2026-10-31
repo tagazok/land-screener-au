@@ -3,10 +3,7 @@ import { customElement, query, state } from 'lit/decorators.js';
 import { compareScore, evaluate, num, type FilterDef, type Row, type Scored, type SignalDef, type Tier } from '../engine';
 import { CSV_SEP, csvValue, fmt } from '../format';
 import { VERDICT_LABEL, judge, type Verdict } from '../judge';
-import {
-  DEFAULT_FINANCE, REFERENCE_SURFACE, decodeFinance, decodeRents, encodeFinance, encodeRents, parkingRentFor, simulate, simulateParking,
-  withFinance, type Finance,
-} from '../finance';
+import { DEFAULT_FINANCE, decodeFinance, encodeFinance, simulate, withFinance, type Finance } from '../finance';
 import { makeScale, type Scale } from '../scale';
 import {
   COLUMNS, DETAIL_GROUPS, FILTERS, HELP, SIGNALS, STRATEGIES, columnHelp, derive, missingDataNote, preset,
@@ -23,7 +20,8 @@ import { planFilters, type Plan } from '../ai/plan';
 
 interface Meta {
   built: string;
-  dvf_window_end: string;
+  price_window: string;
+  rent_window: string;
   sources: { key: string; producer: string; licence: string; vintage: string; url: string; credit: string | null }[];
 }
 
@@ -42,15 +40,15 @@ const val = (c: string, v: Row[string] | undefined) => {
 const ALL_TABLE_COLUMNS = [...new Set(DETAIL_GROUPS.flatMap((g) => g.columns))].filter((c) => c in COLUMNS);
 
 /** Extra columns shown by default after the strategy's own columns. */
-const COMMON_COLUMNS = ['pop', 'pop_cagr_11y', 'median_income', 'price_trend_3y', 'apl_gp', 'services_km', 'risk_count',
-  'clay_high_share', 'crisis_days_avg', 'fibre_share', 'tfpb_rate'];
+const COMMON_COLUMNS = ['council', 'pop', 'pop_cagr', 'median_hh_income_week', 'price_trend_5y', 'seifa_decile_sa', 'risk_count',
+  'crime_burglary', 'cbd_km'];
 
 function defaultColumns(id: StrategyId): string[] {
   const st = STRATEGIES.find((s) => s.id === id) ?? STRATEGIES[0];
   return [...new Set([...st.table, ...COMMON_COLUMNS])].filter((c) => c in COLUMNS);
 }
 
-/** "Colorer par" choices: the numeric indicators, grouped like the side panel. */
+/** "Colour by" choices: the numeric indicators, grouped like the side panel. */
 const COLOR_GROUPS = DETAIL_GROUPS.map((g) => ({
   title: g.title,
   columns: g.columns.filter((c) => COLUMNS[c] && !['bool', 'text'].includes(COLUMNS[c].unit)),
@@ -58,7 +56,7 @@ const COLOR_GROUPS = DETAIL_GROUPS.map((g) => ({
 
 const TIER_TEXT: Record<string, string> = { A: '#fff', B: '#14361f', C: '#3b4a1a', D: '#5a4210', E: '#4a1606', fail: '#fff' };
 
-/** Table rows rendered at a time; "Afficher plus" adds another page. */
+/** Table rows rendered at a time; "Show more" adds another page. */
 const PAGE = 200;
 
 /** communes.json is columnar ({n, cols: {name: values[]}}): turn it into row objects once. */
@@ -86,7 +84,7 @@ function featureBounds(f: GeoJSON.Feature): Bounds {
   return [[w, s], [e, n]];
 }
 
-/** Lower-case, accent-free text for search ("Saint-Émilion" → "saint emilion"). */
+/** Lower-case, accent-free text for search ("Port Noarlunga" → "port noarlunga"). */
 const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[-'’]/g, ' ');
 
 @customElement('app-root')
@@ -95,7 +93,7 @@ export class AppRoot extends LitElement {
   @state() private departements: GeoJSON.FeatureCollection | null = null;
   @state() private depNames: Record<string, string> = {};
   @state() private meta: Meta | null = null;
-  /** '' = toute la France, otherwise a département code. */
+  /** Council codes to show; empty = all of Greater Adelaide. */
   @state() private scopes: string[] = [];
   @state() private depQuery = '';
   @state() private search = '';
@@ -116,17 +114,13 @@ export class AppRoot extends LitElement {
   @state() private mapFull = false;
   @state() private finance: Finance = { ...DEFAULT_FINANCE };
   @state() private colorBy = 'score';
-  /** Background map layers (IGN forest mask, shaded relief). */
-  @state() private overlays = { forest: false, relief: false };
+  /** Background map layers (bushfire protection areas, shaded relief). */
+  @state() private overlays = { bushfire: false, relief: false };
   @state() private greyFailing = true;
   @state() private columns: string[] = [];
   @state() private theme: 'auto' | 'light' | 'dark' = 'auto';
   @state() private systemDark = false;
-  @state() private summaries: Record<string, string> = {};
-  @state() private summaryMeta: { model: string; generated: string } | null = null;
-  /** AI summaries are fetched one département at a time, when one of its communes is opened. */
-  @state() private summaryDeps: Record<string, 'loading' | 'done'> = {};
-  /** Megabytes of commune data received so far; null once the data is loaded. */
+  /** Megabytes of suburb data received so far; null once the data is loaded. */
   @state() private loadingMb: number | null = 0;
   @state() private error: string | null = null;
   @state() private copied = false;
@@ -134,7 +128,7 @@ export class AppRoot extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    const saved = localStorage.getItem('lsfr-theme');
+    const saved = localStorage.getItem('lsau-theme');
     if (saved === 'light' || saved === 'dark' || saved === 'auto') this.theme = saved;
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     this.systemDark = mq.matches;
@@ -149,7 +143,7 @@ export class AppRoot extends LitElement {
       else if (this.mapFull) this.setMapFull(false);
     });
     this.load();
-    // Close open dropdowns (départements, colonnes) on a click outside them.
+    // Close open dropdowns (councils, columns) on a click outside them.
     window.addEventListener('click', (e) => {
       const path = e.composedPath();
       this.renderRoot.querySelectorAll('details.deppicker[open], details.colpicker[open]').forEach((d) => {
@@ -168,7 +162,7 @@ export class AppRoot extends LitElement {
     try {
       const [data, dep, meta] = await Promise.all([
         this.fetchWithProgress('./data/communes.json'),
-        fetch('./data/departements.geojson').then((r) => r.json()),
+        fetch('./data/councils.geojson').then((r) => r.json()),
         fetch('./data/metadata.json').then((r) => r.json()),
       ]);
       this.raw = fromColumns(data);
@@ -179,7 +173,7 @@ export class AppRoot extends LitElement {
       this.meta = meta;
       this.loadingMb = null;
     } catch (e) {
-      this.error = `Impossible de charger les données : ${(e as Error).message}`;
+      this.error = `Could not load the data: ${(e as Error).message}`;
     }
   }
 
@@ -205,29 +199,6 @@ export class AppRoot extends LitElement {
     return JSON.parse(new TextDecoder().decode(all));
   }
 
-  /** Load the AI summaries of a département (optional: the app works without them). */
-  private loadSummaries(dep: string) {
-    if (this.summaryDeps[dep]) return;
-    this.summaryDeps = { ...this.summaryDeps, [dep]: 'loading' };
-    fetch(`./data/summaries/${dep}.json`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (d?.summaries) {
-          this.summaries = { ...this.summaries, ...d.summaries };
-          this.summaryMeta ??= { model: d.model, generated: d.generated };
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => (this.summaryDeps = { ...this.summaryDeps, [dep]: 'done' }));
-  }
-
-  willUpdate() {
-    // Fetch the summaries of the opened commune's département (from a click or a shared link).
-    if (!this.selected || !this.raw.length) return;
-    const row = this.raw.find((x) => x.code === this.selected);
-    if (row) this.loadSummaries(row.dep as string);
-  }
-
   private applyUrl(hash: string) {
     const s = decode(hash);
     this.strategy = s.strategy;
@@ -236,7 +207,7 @@ export class AppRoot extends LitElement {
     this.signals = s.signals;
     this.selected = s.selected;
     this.scopes = s.scopes ?? [];
-    this.finance = { ...decodeFinance(s.finance ?? null), parkingRents: decodeRents(s.rents) };
+    this.finance = decodeFinance(s.finance ?? null);
     this.custom = s.custom ?? [];
     this.tiers = s.tiers ?? [];
     this.columns = defaultColumns(s.strategy);
@@ -244,7 +215,7 @@ export class AppRoot extends LitElement {
 
   private pushUrl() {
     const h = encode({
-      strategy: this.strategy, type: this.type, filters: this.filters, signals: this.signals, selected: this.selected, scopes: this.scopes, finance: encodeFinance(this.finance), custom: this.custom, tiers: this.tiers, rents: encodeRents(this.finance.parkingRents),
+      strategy: this.strategy, type: this.type, filters: this.filters, signals: this.signals, selected: this.selected, scopes: this.scopes, finance: encodeFinance(this.finance), custom: this.custom, tiers: this.tiers,
     });
     history.replaceState(null, '', `#${h}`);
   }
@@ -267,7 +238,7 @@ export class AppRoot extends LitElement {
 
   private setTheme(t: 'auto' | 'light' | 'dark') {
     this.theme = t;
-    localStorage.setItem('lsfr-theme', t);
+    localStorage.setItem('lsau-theme', t);
   }
 
   private headerObs?: ResizeObserver;
@@ -295,7 +266,7 @@ export class AppRoot extends LitElement {
     document.documentElement.style.background = d ? '#0f1714' : '#f2f4f1';
   }
 
-  /** Fill colour for every commune, given the "Colorer par" choice. Communes outside the chosen départements are hidden. */
+  /** Fill colour for every suburb, given the "Colour by" choice. Suburbs outside the chosen councils are hidden. */
   private mapPaint(results: Scored[]): { paint: Map<string, Paint>; scale: Scale | null } {
     const paint = new Map<string, Paint>();
     const grey = this.dark ? '#5b6862' : TIER_COLORS.fail;
@@ -317,11 +288,6 @@ export class AppRoot extends LitElement {
       paint.set(r.row.code, { color: shown ? scale!.color(v!) : grey, strong: !!shown });
     }
     return { paint, scale };
-  }
-
-  private setType(t: PropertyType) {
-    this.type = t;
-    this.pushUrl();
   }
 
   private updateFilter(id: string, patch: Partial<FilterDef>) {
@@ -357,7 +323,7 @@ export class AppRoot extends LitElement {
     applyPlan: (plan: Plan) => this.applyPlan(plan),
     facts: (context: string) => this.chatFacts(context),
     openCommune: (code: string) => {
-      // A commune outside the chosen départements has no panel: widen to all of France first.
+      // A suburb outside the chosen councils has no panel: widen to all of Greater Adelaide first.
       if (!this.results.some((r) => r.row.code === code)) this.setScopes([]);
       this.select(code, true);
     },
@@ -370,23 +336,24 @@ export class AppRoot extends LitElement {
       applied.push(STRATEGIES.find((s) => s.id === plan.strategy)!.label);
     }
     const dropped: string[] = [];
-    if (plan.departements) {
+    if (plan.councils) {
       const codes: string[] = [];
-      for (const d of plan.departements) {
-        const q = fold(d.trim());
-        const code = /^(\d{2}|2[ab])$/i.test(q) ? q.toUpperCase()
-          : Object.entries(this.depNames).find(([, n]) => fold(n) === q)?.[0];
+      for (const d of plan.councils) {
+        // "City of Unley", "Unley", "Port Adelaide Enfield" or the LGA code.
+        const q = fold(d.trim()).replace(/^(city|town|district council|corporation) of (the )?/, '').replace(/ (city )?council$/, '');
+        const code = /^\d{5}$/.test(q) ? q
+          : Object.entries(this.depNames).find(([, n]) => fold(n) === q || fold(n).startsWith(q))?.[0];
         if (code && code in this.depNames) codes.push(code); else dropped.push(d);
       }
-      if (codes.length || !plan.departements.length) {
+      if (codes.length || !plan.councils.length) {
         this.setScopes(codes);
-        applied.push(codes.length ? this.scopeLabel : 'Toute la France');
+        applied.push(codes.length ? this.scopeLabel : 'All of Greater Adelaide');
       }
     }
     if (plan.reset_filters) { this.custom = []; this.tiers = []; }
     if (plan.tiers?.length) {
       this.tiers = [...new Set(plan.tiers)].sort() as Tier[];
-      applied.push(`Groupes ${this.tiers.join(', ')}`);
+      applied.push(`Groups ${this.tiers.join(', ')}`);
     }
     const { filters, dropped: badCols } = planFilters(plan);
     dropped.push(...badCols);
@@ -397,12 +364,12 @@ export class AppRoot extends LitElement {
     }
     if (plan.color_by && plan.color_by in COLUMNS && !['bool', 'text'].includes(COLUMNS[plan.color_by].unit)) {
       this.colorBy = plan.color_by;
-      applied.push(`Carte : ${COLUMNS[plan.color_by].label}`);
+      applied.push(`Map: ${COLUMNS[plan.color_by].label}`);
     }
-    if (plan.forest_layer !== null || plan.relief_layer !== null) {
-      this.overlays = { forest: plan.forest_layer ?? this.overlays.forest, relief: plan.relief_layer ?? this.overlays.relief };
-      if (plan.forest_layer !== null) applied.push(plan.forest_layer ? 'Forêts affichées' : 'Forêts masquées');
-      if (plan.relief_layer !== null) applied.push(plan.relief_layer ? 'Relief affiché' : 'Relief masqué');
+    if (plan.bushfire_layer !== null || plan.relief_layer !== null) {
+      this.overlays = { bushfire: plan.bushfire_layer ?? this.overlays.bushfire, relief: plan.relief_layer ?? this.overlays.relief };
+      if (plan.bushfire_layer !== null) applied.push(plan.bushfire_layer ? 'Bushfire areas shown' : 'Bushfire areas hidden');
+      if (plan.relief_layer !== null) applied.push(plan.relief_layer ? 'Relief shown' : 'Relief hidden');
     }
     this.showFailing = false;
     this.sort = null;
@@ -412,27 +379,27 @@ export class AppRoot extends LitElement {
   }
 
   /**
-   * Facts for the model: the best communes now shown, plus any commune named in the conversation
-   * (so a follow-up like "what is Roubaix's risk?" gets Roubaix's data), with the values the user filtered on.
+   * Facts for the model: the best suburbs now shown, plus any suburb named in the conversation
+   * (so a follow-up like "what is Stirling's risk?" gets Stirling's data), with the values the user filtered on.
    */
   private chatFacts(context = ''): { count: number; text: string; communes: { code: string; nom: string; ads: { label: string; url: string }[] }[] } {
     const passing = this.results.filter((r) => r.pass).sort(compareScore);
-    const cols = [...new Set([...this.custom.map((f) => f.column), 'pop', 'town3000_name', 'town3000_km', 'price_m2', 'risk_count', 'risk_list'])]
+    const cols = [...new Set([...this.custom.map((f) => f.column), 'pop', 'price', 'rent_week', 'gross_yield', 'cbd_km', 'risk_count', 'risk_list'])]
       .filter((c) => c in COLUMNS).slice(0, 14);
     const line = (row: Row, extra: string[] = []) => {
       const dep = this.depNames[row.dep as string] ?? row.dep;
-      const vals = [...new Set([...cols, ...extra])].map((c) => `${COLUMNS[c]?.label ?? c} ${fmt(c, row[c])}`).join(' ; ');
-      return `- ${row.nom} (${dep}, code INSEE ${row.code}, code postal ${row.postcodes ?? '?'}) : ${vals}`;
+      const vals = [...new Set([...cols, ...extra])].map((c) => `${COLUMNS[c]?.label ?? c} ${fmt(c, row[c])}`).join('; ');
+      return `- ${row.nom} (council ${dep}, suburb code ${row.code}, postcode ${row.postcodes ?? '?'}): ${vals}`;
     };
-    // Communes named in the question or the previous exchange (whole-word match, names of 4+ letters).
+    // Suburbs named in the question or the previous exchange (whole-word match, names of 4+ letters).
     const ctx = ` ${fold(context)} `;
     const named = context ? this.rows.filter((r) => r.nom.length >= 4 && ctx.includes(` ${fold(r.nom)} `)).slice(0, 5) : [];
-    const detail = ['risk_list', 'catnat_flood', 'ppr_flood', 'risk_forest_fire', 'radon_class', 'clay_high_share', 'pfas_max',
-      'pesticide_breach_share', 'sis_count', 'forest_around_share', 'relief_m', 'tour_beds_change', 'second_homes_change',
-      'median_income', 'apl_gp', 'crime_burglary', 'pop_cagr_11y'];
-    const parts = [`${passing.length} communes retenues par les critères actuels. Les meilleures :`, ...passing.slice(0, 8).map((r) => line(r.row))];
-    if (named.length) parts.push('', 'Communes citées dans la conversation (détail) :', ...named.map((r) => line(r, detail)));
-    // Names the answer may cite: the communes listed for the model, plus the next best ones it may mention.
+    const detail = ['risk_list', 'bushfire_high_share', 'bushfire_med_high_share', 'low_lying_share', 'price_trend_5y', 'rent_trend_5y',
+      'forest_around_share', 'relief_m', 'median_hh_income_week', 'seifa_decile_sa', 'tenant_share', 'unemployment_rate',
+      'crime_burglary', 'crime_violence', 'pop_cagr'];
+    const parts = [`${passing.length} suburbs pass the current criteria. The best ones:`, ...passing.slice(0, 8).map((r) => line(r.row))];
+    if (named.length) parts.push('', 'Suburbs named in the conversation (detail):', ...named.map((r) => line(r, detail)));
+    // Names the answer may cite: the suburbs listed for the model, plus the next best ones it may mention.
     const communes = [...passing.slice(0, 40).map((r) => r.row), ...named].map((r) => ({ code: r.code, nom: r.nom, ads: adLinks(r) }));
     return { count: passing.length + named.length, text: parts.join('\n'), communes };
   }
@@ -452,19 +419,19 @@ export class AppRoot extends LitElement {
   }
 
   // ------------------------------------------------------------ derived
-  // 35 000 communes: derive/evaluate are cached and only recomputed when their inputs change.
+  // derive/evaluate are cached and only recomputed when their inputs change.
   private _rows?: { raw: Row[]; type: PropertyType; finance: Finance; out: Row[] };
   private _res?: { rows: Row[]; scope: string; filters: FilterDef[]; custom: FilterDef[]; tiers: Tier[]; signals: SignalDef[]; out: Scored[] };
 
   private get rows(): Row[] {
     const c = this._rows;
     if (c && c.raw === this.raw && c.type === this.type && c.finance === this.finance) return c.out;
-    const out = withFinance(derive(this.raw, this.type), this.type, this.finance);
+    const out = withFinance(derive(this.raw, this.type), this.finance);
     this._rows = { raw: this.raw, type: this.type, finance: this.finance, out };
     return out;
   }
 
-  /** Scores are computed among the communes of the chosen zone (all of France or one département). */
+  /** Scores are computed among the suburbs of the chosen zone (all of Greater Adelaide or some councils). */
   private get results(): Scored[] {
     const rows = this.rows;
     const c = this._res;
@@ -484,13 +451,14 @@ export class AppRoot extends LitElement {
   private setScopes(codes: string[]) {
     this.scopes = [...new Set(codes)].sort();
     this.shown = PAGE;
-    if (this.selected && this.scopes.length && !this.scopes.some((d) => this.selected!.startsWith(d))) this.selected = null;
+    const sel = this.selected ? this.raw.find((r) => r.code === this.selected) : undefined;
+    if (sel && this.scopes.length && !this.scopes.includes(sel.dep as string)) this.selected = null;
     this.pushUrl();
   }
 
   private _zoom?: { scope: string; dep: unknown; out: Bounds | null };
 
-  /** Bounds of the chosen départements (cached: a new array each render would re-zoom the map). */
+  /** Bounds of the chosen councils (cached: a new array each render would re-zoom the map). */
   private get zoomTo(): Bounds | null {
     const key = this.scopes.join(',');
     if (this._zoom && this._zoom.scope === key && this._zoom.dep === this.departements) return this._zoom.out;
@@ -504,22 +472,21 @@ export class AppRoot extends LitElement {
     return out;
   }
 
-  /** "Gironde (33)", "Gironde, Landes" or "4 départements" — for labels and the CSV. */
+  /** "Unley", "Unley, Mitcham" or "4 councils" — for labels and the CSV. */
   private get scopeLabel(): string {
     const s = this.scopes;
-    if (!s.length) return 'Toute la France';
-    if (s.length === 1) return `${this.depNames[s[0]] ?? s[0]} (${s[0]})`;
+    if (!s.length) return 'All of Greater Adelaide';
     if (s.length <= 3) return s.map((d) => this.depNames[d] ?? d).join(', ');
-    return `${s.length} départements`;
+    return `${s.length} councils`;
   }
 
   private sorted(results: Scored[]): Scored[] {
     let list = this.showFailing ? [...results] : results.filter((r) => r.pass);
     if (this.search.trim()) {
       const q = fold(this.search.trim());
-      // Name, INSEE code, or postal code ("33700" finds Mérignac).
-      list = list.filter((r) => fold(r.row.nom).includes(q) || r.row.code.startsWith(q)
-        || (/^\d{2,5}$/.test(q) && typeof r.row.postcodes === 'string' && r.row.postcodes.split(' ').some((p) => p.startsWith(q))));
+      // Name or postcode ("5045" finds Glenelg).
+      list = list.filter((r) => fold(r.row.nom).includes(q)
+        || (/^\d{2,4}$/.test(q) && typeof r.row.postcodes === 'string' && r.row.postcodes.split(' ').some((p) => p.startsWith(q))));
     }
     const s = this.sort;
     if (!s) {
@@ -531,7 +498,7 @@ export class AppRoot extends LitElement {
       if (va === null || va === undefined) return 1;
       if (vb === null || vb === undefined) return -1;
       if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * s.dir;
-      return String(va).localeCompare(String(vb), 'fr') * s.dir;
+      return String(va).localeCompare(String(vb), 'en') * s.dir;
     });
   }
 
@@ -542,18 +509,18 @@ export class AppRoot extends LitElement {
 
   private exportCsv(list: Scored[]) {
     const cols = ['code', 'nom', ...this.tableColumns, 'score', 'tier'];
-    const head = cols.map((c) => (c === 'code' ? 'Code INSEE' : c === 'score' ? 'Score' : c === 'tier' ? 'Groupe' : COLUMNS[c]?.label ?? c));
+    const head = cols.map((c) => (c === 'code' ? 'ABS suburb code' : c === 'score' ? 'Score' : c === 'tier' ? 'Group' : COLUMNS[c]?.label ?? c));
     const lines = [head.map((h) => csvValue(h)).join(CSV_SEP)];
     for (const r of list) {
       lines.push(cols.map((c) => (c === 'score' ? csvValue(r.score) : c === 'tier' ? csvValue(r.tier) : csvValue(r.row[c]))).join(CSV_SEP));
     }
     const st = STRATEGIES.find((s) => s.id === this.strategy)!;
-    const zone = this.scopes.length ? this.scopeLabel : 'France métropolitaine';
-    lines.push(`# Land Screener FR · ${zone} · ${st.label} · données du ${this.meta?.built ?? ''} · sources : DVF (DGFiP), Estimations ANIL à partir des données du Groupe SeLoger et de leboncoin, INSEE, Géorisques, DGFiP REI, VigiEau`);
+    const zone = this.scopes.length ? this.scopeLabel : 'Greater Adelaide';
+    lines.push(`# Land Screener AU · ${zone} · ${st.label} · data of ${this.meta?.built ?? ''} · sources: SA Valuer-General, SA rental bonds (CBS / SA Housing Trust), SA Police, Plan SA, ABS Census 2021, SEIFA 2021, ABS ERP (CC BY 4.0)`);
     const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `land-screener-${this.scopes.join('-') || 'france'}-${this.strategy}.csv`;
+    a.download = `land-screener-${this.scopes.join('-') || 'adelaide'}-${this.strategy}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   }
@@ -579,15 +546,12 @@ export class AppRoot extends LitElement {
     this.columns = on ? ALL_TABLE_COLUMNS.filter((x) => x === c || cur.includes(x)) : cur;
   }
 
-  /** Short human text for an active filter, e.g. "Rendement brut ≥ 5 %". */
+  /** Short human text for an active filter, e.g. "Gross yield ≥ 3.5%". */
   private filterChip(f: FilterDef): string {
     const col = COLUMNS[f.column]?.label ?? f.column;
-    if (f.id === 'landdata') return 'Avec ventes de terrains';
-    if (f.id === 'parkingdata') return 'Avec ventes de parkings';
-    if (f.op === 'isFalse') return `Sans : ${col.toLowerCase()}`;
+    if (f.op === 'isFalse') return `Not: ${col.toLowerCase()}`;
     if (f.op === 'isTrue') return col;
-    const v = fmt(f.column, f.value ?? null);
-    return `${col} ${f.op === 'min' ? '≥' : '≤'} ${v === 'sur place' ? '0 km' : v}`;
+    return `${col} ${f.op === 'min' ? '≥' : '≤'} ${fmt(f.column, f.value ?? null)}`;
   }
 
   // ------------------------------------------------------------ render
@@ -604,16 +568,16 @@ export class AppRoot extends LitElement {
       <header>
         <div class="brand">
           <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 25 L12 12 L17 19 L21 14 L29 25 Z" fill="#9be3b5"/><circle cx="23" cy="8" r="3" fill="#f4d35e"/></svg>
-          <span><b>Land Screener</b><small>France métropolitaine · données ouvertes</small></span>
+          <span><b>Land Screener</b><small>Greater Adelaide · open data</small></span>
         </div>
-        <nav class="tabs" role="tablist" aria-label="Stratégie d’investissement">
+        <nav class="tabs" role="tablist" aria-label="Investment strategy">
           ${STRATEGIES.map((s) => html`
             <button role="tab" aria-selected=${s.id === this.strategy} class=${s.id === this.strategy ? 'on' : ''}
               title=${s.label} @click=${() => this.setStrategy(s.id)}>${s.label.replace(/ \(.*\)$/, "")}</button>`)}
         </nav>
         <span class="grow"></span>
-        <div class="themes" role="radiogroup" aria-label="Thème">
-          ${([['auto', 'Auto', 'Suivre le réglage du système'], ['light', '☀', 'Thème clair'], ['dark', '☾', 'Thème sombre']] as const).map(([t, l, title]) => html`
+        <div class="themes" role="radiogroup" aria-label="Theme">
+          ${([['auto', 'Auto', 'Follow the system setting'], ['light', '☀', 'Light theme'], ['dark', '☾', 'Dark theme']] as const).map(([t, l, title]) => html`
             <button role="radio" aria-checked=${this.theme === t} class=${this.theme === t ? 'on' : ''} title=${title} aria-label=${title}
               @click=${() => this.setTheme(t)}>${l}</button>`)}
         </div>
@@ -621,28 +585,23 @@ export class AppRoot extends LitElement {
 
       <div class="layout ${sel ? 'has-detail' : ''} ${this.chatWidth ? 'chat-docked' : ''}">
         <main>
-          <section class="summary" aria-label="Réglages actifs">
+          <section class="summary" aria-label="Active settings">
             <div class="summary-text">
               <p>${st.blurb}</p>
               ${this.renderAssumptions()}
               <div class="chips">
                 ${this.scopes.length ? html`<span class="chip strong">${this.scopeLabel}</span>` : nothing}
-                ${this.strategy !== 'land' && this.strategy !== 'parking' ? html`
-                  <div class="seg" role="radiogroup" aria-label="Type de bien">
-                    ${(['house', 'apt'] as PropertyType[]).map((t) => html`
-                      <button role="radio" aria-checked=${this.type === t} class=${this.type === t ? 'on' : ''} @click=${() => this.setType(t)}>
-                        ${t === 'house' ? 'Maison' : 'Appartement'}</button>`)}
-                  </div>${tip('Type de bien', HELP.type)}` : nothing}
+                <span class="chip strong" title="The SA Valuer-General publishes suburb medians for houses only">Houses</span>
                 ${active.map((f) => html`<span class="chip">${this.filterChip(f)}</span>`)}
                 ${this.custom.length + this.tiers.length > 1 ? html`<button class="chip clear" @click=${() => { this.custom = []; this.tiers = []; this.pushUrl(); }}
-                  title="Retirer tous les filtres ajoutés (en vert)">Effacer les filtres ajoutés ×</button>` : nothing}
-                ${this.tiers.length ? html`<span class="chip custom" title="Filtre ajouté">Groupes ${this.tiers.join(', ')}<button aria-label="Retirer le filtre sur les groupes" @click=${() => { this.tiers = []; this.pushUrl(); }}>×</button></span>` : nothing}
-                ${this.custom.map((f) => html`<span class="chip custom" title="Filtre ajouté">${this.filterChip(f)}<button aria-label="Retirer le filtre ${this.filterChip(f)}" @click=${() => this.removeCustom(f.id)}>×</button></span>`)}
+                  title="Remove all added filters (in green)">Clear added filters ×</button>` : nothing}
+                ${this.tiers.length ? html`<span class="chip custom" title="Added filter">Groups ${this.tiers.join(', ')}<button aria-label="Remove the group filter" @click=${() => { this.tiers = []; this.pushUrl(); }}>×</button></span>` : nothing}
+                ${this.custom.map((f) => html`<span class="chip custom" title="Added filter">${this.filterChip(f)}<button aria-label="Remove the filter ${this.filterChip(f)}" @click=${() => this.removeCustom(f.id)}>×</button></span>`)}
               </div>
             </div>
             <button class="btn primary" @click=${() => (this.settingsOpen = true)} aria-haspopup="dialog">
               <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h9M16 5h1M3 10h2M9 10h8M3 15h7M14 15h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="14" cy="5" r="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="7" cy="10" r="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="15" r="2" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-              Filtres et poids
+              Filters and weights
             </button>
           </section>
 
@@ -651,17 +610,17 @@ export class AppRoot extends LitElement {
           ${this.renderMap(results)}
 
           <div class="tablebar">
-            <h2>Classement</h2>
+            <h2>Ranking</h2>
             <label class="switchlabel"><input class="switch" type="checkbox" .checked=${this.showFailing}
-              @change=${(e: Event) => (this.showFailing = (e.target as HTMLInputElement).checked)}> Afficher les communes éliminées</label>
-            ${tip('Communes éliminées', HELP.failing)}
-            <input class="search" type="search" placeholder="Rechercher une commune…" aria-label="Rechercher une commune"
+              @change=${(e: Event) => (this.showFailing = (e.target as HTMLInputElement).checked)}> Show removed suburbs</label>
+            ${tip('Removed suburbs', HELP.failing)}
+            <input class="search" type="search" placeholder="Search a suburb or postcode…" aria-label="Search a suburb"
               .value=${this.search} @input=${(e: Event) => { this.search = (e.target as HTMLInputElement).value; this.shown = PAGE; }}
               @change=${(e: Event) => { this.search = (e.target as HTMLInputElement).value; this.shown = PAGE; }}>
             <span class="grow"></span>
-            <button class="btn" @click=${() => this.share()}>${this.copied ? 'Lien copié ✓' : 'Copier le lien'}</button>
+            <button class="btn" @click=${() => this.share()}>${this.copied ? 'Link copied ✓' : 'Copy link'}</button>
             ${this.renderColumnPicker()}
-            <button class="btn" @click=${() => this.exportCsv(list)}>Exporter CSV · ${list.length}</button>
+            <button class="btn" @click=${() => this.exportCsv(list)}>Export CSV · ${list.length}</button>
           </div>
           ${this.renderTable(list)}
           ${this.renderFooter()}
@@ -675,10 +634,9 @@ export class AppRoot extends LitElement {
         <div class="loading" role="status" aria-live="polite">
           <span class="spinner" aria-hidden="true"></span>
           <div>
-            <b>Chargement des données des communes…</b>
-            <small>${this.loadingMb > 0.05 ? `${this.loadingMb.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} Mo sur environ 30 Mo reçus` : 'Connexion…'}
-              · quelques secondes sur une bonne connexion</small>
-            <progress max="30" value=${Math.min(30, this.loadingMb)}></progress>
+            <b>Loading suburb data…</b>
+            <small>${this.loadingMb > 0.01 ? `${this.loadingMb.toLocaleString('en-AU', { maximumFractionDigits: 1 })} MB of about 0.3 MB` : 'Connecting…'}</small>
+            <progress max="0.3" value=${Math.min(0.3, this.loadingMb)}></progress>
           </div>
         </div>` : nothing}
     `;
@@ -687,31 +645,31 @@ export class AppRoot extends LitElement {
   private renderSettings(results: Scored[], label: string) {
     return html`
       <div class="backdrop" @click=${() => (this.settingsOpen = false)}></div>
-      <aside class="drawer" role="dialog" aria-modal="true" aria-label="Filtres et poids">
+      <aside class="drawer" role="dialog" aria-modal="true" aria-label="Filters and weights">
         <div class="drawer-head">
-          <div><small>Réglages</small><h2>${label}</h2></div>
-          <button class="close" aria-label="Fermer les réglages" @click=${() => (this.settingsOpen = false)}>×</button>
+          <div><small>Settings</small><h2>${label}</h2></div>
+          <button class="close" aria-label="Close the settings" @click=${() => (this.settingsOpen = false)}>×</button>
         </div>
         <div class="drawer-body">
-          <h3>Filtres <small>retenue / éliminée</small> ${tip('Filtres', HELP.filters)}</h3>
+          <h3>Filters <small>pass / removed</small> ${tip('Filters', HELP.filters)}</h3>
           ${this.filters.map((f) => this.renderFilter(f, results))}
           ${this.renderFinanceInputs()}
-          <h3>Poids <small>ordre seulement</small> ${tip('Poids', HELP.weights)}</h3>
+          <h3>Weights <small>ranking only</small> ${tip('Weights', HELP.weights)}</h3>
           ${this.signals.map((s) => {
             const info = SIGNALS[s.id] ?? { label: s.id, help: '' };
             return html`
               <div class="weight">
                 <span>${info.label}${tip(info.label, `${info.help}\n\n${columnHelp(s.column)}`)}</span>
                 <input type="range" min="0" max="5" step="1" .value=${String(s.weight)}
-                  style="--p:${s.weight * 20}%" aria-label="Poids : ${info.label}"
+                  style="--p:${s.weight * 20}%" aria-label="Weight: ${info.label}"
                   @input=${(e: Event) => this.updateSignal(s.id, Number((e.target as HTMLInputElement).value))}>
                 <output>${s.weight}</output>
               </div>`;
           })}
         </div>
         <div class="drawer-foot">
-          <button class="btn" @click=${() => this.setStrategy(this.strategy)}>Réglages par défaut</button>
-          <button class="btn primary" @click=${() => (this.settingsOpen = false)}>Voir les ${results.filter((r) => r.pass).length} communes</button>
+          <button class="btn" @click=${() => this.setStrategy(this.strategy)}>Default settings</button>
+          <button class="btn primary" @click=${() => (this.settingsOpen = false)}>See the ${results.filter((r) => r.pass).length} suburbs</button>
         </div>
       </aside>`;
   }
@@ -730,7 +688,7 @@ export class AppRoot extends LitElement {
           <span>${info.label}</span>
         </label>
         ${tip(info.label, help)}
-        ${(f.op === 'min' || f.op === 'max') && f.id !== 'landdata' && f.id !== 'parkingdata' ? html`
+        ${f.op === 'min' || f.op === 'max' ? html`
           <span class="fval">
             <input type="number" step=${isPct ? '0.5' : 'any'} .value=${String(shown ?? '')} ?disabled=${!f.enabled}
               aria-label=${info.label}
@@ -739,7 +697,7 @@ export class AppRoot extends LitElement {
                 if (Number.isFinite(v)) this.updateFilter(f.id, { value: isPct ? v / 100 : v });
               }}>${isPct ? html`<i>%</i>` : nothing}
           </span>` : html`<span></span>`}
-        <span class="fcount" title="Communes éliminées par ce filtre">${f.enabled && failing ? `−${failing}` : ''}</span>
+        <span class="fcount" title="Suburbs removed by this filter">${f.enabled && failing ? `−${failing}` : ''}</span>
       </div>`;
   }
 
@@ -748,37 +706,33 @@ export class AppRoot extends LitElement {
       const v = passing.map((r) => num(r.row[col])).filter((x): x is number => x !== null).sort((a, b) => a - b);
       return v.length ? v[Math.floor(v.length / 2)] : null;
     };
-    const priceCol = this.strategy === 'land' ? 'land_price_m2' : this.strategy === 'parking' ? 'parking_price' : 'price_m2';
     const card = (value: unknown, label: string, help: string) => html`
       <div class="stat"><span class="label">${label}${tip(label, help)}</span><b>${value}</b></div>`;
     const extra = this.strategy === 'live'
-      ? card(val('apl_gp', med('apl_gp')), 'accès médecins médian', `${HELP.median}\n\n${columnHelp('apl_gp')}`)
-      : this.strategy === 'parking'
-        ? card(val('parking_gross_yield', med('parking_gross_yield')), 'rendement brut parking médian',
-            `${HELP.median}\n\n${columnHelp('parking_gross_yield')}\n\nVide tant qu’aucun loyer de place n’est indiqué (lien « Modifier » au-dessus).`)
-      : this.strategy !== 'land'
-        ? card(val('gross_yield', med('gross_yield')), 'rendement brut médian', `${HELP.median}\n\n${columnHelp('gross_yield')}`)
-        : nothing;
+      ? card(val('crime_burglary', med('crime_burglary')), 'median break-ins / 1,000 dwellings', `${HELP.median}\n\n${columnHelp('crime_burglary')}`)
+      : this.strategy === 'growth'
+        ? card(val('price_trend_5y', med('price_trend_5y')), 'median price change, 5 years', `${HELP.median}\n\n${columnHelp('price_trend_5y')}`)
+        : card(val('gross_yield', med('gross_yield')), 'median gross yield', `${HELP.median}\n\n${columnHelp('gross_yield')}`);
     return html`
-      <section class="stats" aria-label="Résumé">
-        ${card(html`${passing.length}<small> / ${total}</small>`, 'communes retenues', HELP.passing)}
-        ${card(fmt(priceCol, med(priceCol)), `${COLUMNS[priceCol].label} médian`, `${HELP.median}\n\n${columnHelp(priceCol)}`)}
+      <section class="stats" aria-label="Summary">
+        ${card(html`${passing.length}<small> / ${total}</small>`, 'suburbs pass', HELP.passing)}
+        ${card(fmt('price', med('price')), 'median house price', `${HELP.median}\n\n${columnHelp('price')}`)}
         ${extra}
-        ${card(val('pop_cagr_11y', med('pop_cagr_11y')), 'croissance pop./an médiane', `${HELP.median}\n\n${columnHelp('pop_cagr_11y')}`)}
+        ${card(val('pop_cagr', med('pop_cagr')), 'median population growth / yr', `${HELP.median}\n\n${columnHelp('pop_cagr')}`)}
       </section>`;
   }
 
   private renderMap(results: Scored[]) {
     const { paint, scale } = this.mapPaint(results);
-    const label = this.colorBy === 'score' ? 'Score global' : COLUMNS[this.colorBy]?.label ?? this.colorBy;
+    const label = this.colorBy === 'score' ? 'Overall score' : COLUMNS[this.colorBy]?.label ?? this.colorBy;
     return html`
-      <div class="card mapcard ${this.mapFull ? 'full' : ''}" role=${this.mapFull ? 'region' : nothing} aria-label=${this.mapFull ? 'Carte en grand' : nothing}>
+      <div class="card mapcard ${this.mapFull ? 'full' : ''}" role=${this.mapFull ? 'region' : nothing} aria-label=${this.mapFull ? 'Full-size map' : nothing}>
         <div class="maptools">
           ${this.renderDepPicker()}
           <label class="select">
-            <span>Colorer par</span>
-            <select aria-label="Colorer la carte par" @change=${(e: Event) => (this.colorBy = (e.target as HTMLSelectElement).value)}>
-              <option value="score" ?selected=${this.colorBy === 'score'}>Score global (groupes A à E)</option>
+            <span>Colour by</span>
+            <select aria-label="Colour the map by" @change=${(e: Event) => (this.colorBy = (e.target as HTMLSelectElement).value)}>
+              <option value="score" ?selected=${this.colorBy === 'score'}>Overall score (groups A to E)</option>
               ${COLOR_GROUPS.map((g) => html`<optgroup label=${g.title}>
                 ${g.columns.map((c) => html`<option value=${c} ?selected=${this.colorBy === c}>${COLUMNS[c].label}</option>`)}
               </optgroup>`)}
@@ -786,24 +740,24 @@ export class AppRoot extends LitElement {
           </label>
           ${this.colorBy !== 'score' ? html`${colTip(this.colorBy)}
             <label class="switchlabel"><input class="switch" type="checkbox" .checked=${this.greyFailing}
-              @change=${(e: Event) => (this.greyFailing = (e.target as HTMLInputElement).checked)}> Griser les communes éliminées</label>` : nothing}
-          <div class="seg" role="group" aria-label="Fonds de carte">
-            ${([['forest', 'Forêts', 'Afficher les forêts (IGN, masque forêt 2021–2023). Visible à partir du zoom régional.'],
-                ['relief', 'Relief', 'Afficher le relief ombré (IGN, estompage)']] as const).map(([k, l, title]) => html`
+              @change=${(e: Event) => (this.greyFailing = (e.target as HTMLInputElement).checked)}> Grey out removed suburbs</label>` : nothing}
+          <div class="seg" role="group" aria-label="Map layers">
+            ${([['bushfire', 'Bushfire', 'Show the bushfire protection areas (Plan SA): High, Medium, General'],
+                ['relief', 'Relief', 'Show shaded relief (Esri World Hillshade)']] as const).map(([k, l, title]) => html`
               <button aria-pressed=${this.overlays[k] ? 'true' : 'false'} class=${this.overlays[k] ? 'on' : ''} title=${title}
                 @click=${() => (this.overlays = { ...this.overlays, [k]: !this.overlays[k] })}>${l}</button>`)}
-          </div>${tip('Forêts et relief', HELP.overlays)}
+          </div>${tip('Bushfire and relief', HELP.overlays)}
           <span class="grow"></span>
-          <span class="hint">Cliquez une commune pour son détail</span>
+          <span class="hint">Click a suburb for its detail</span>
           <button class="btn icon" @click=${() => this.setMapFull(!this.mapFull)}
-            aria-pressed=${this.mapFull ? 'true' : 'false'} title=${this.mapFull ? 'Réduire la carte (Échap)' : 'Agrandir la carte'}>
+            aria-pressed=${this.mapFull ? 'true' : 'false'} title=${this.mapFull ? 'Shrink the map (Esc)' : 'Expand the map'}>
             ${this.mapFull
-              ? html`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 3v5H3M12 3v5h5M8 17v-5H3M12 17v-5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Réduire`
-              : html`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Agrandir`}
+              ? html`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 3v5H3M12 3v5h5M8 17v-5H3M12 17v-5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Shrink`
+              : html`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Expand`}
           </button>
         </div>
         <div class="mapwrap">
-          <map-view .tiles=${'./data/communes.pmtiles'} .departements=${this.departements} .zoomTo=${this.zoomTo}
+          <map-view .tiles=${'./data/communes.pmtiles'} .bushfire=${'./data/bushfire.geojson'} .departements=${this.departements} .zoomTo=${this.zoomTo}
             .paint=${paint} .selected=${this.selected} .dark=${this.dark} .overlays=${this.overlays}
             @select=${(e: CustomEvent<string>) => this.select(e.detail)}></map-view>
           ${this.renderScale(label, scale)}
@@ -811,34 +765,34 @@ export class AppRoot extends LitElement {
       </div>`;
   }
 
-  /** Multi-select of départements: map, table, scores and medians are restricted to them. */
+  /** Multi-select of councils: map, table, scores and medians are restricted to them. */
   private renderDepPicker() {
     const q = fold(this.depQuery.trim());
-    const all = Object.entries(this.depNames).sort(([a], [b]) => a.localeCompare(b));
-    const shown = q ? all.filter(([c, n]) => c.toLowerCase().startsWith(q) || fold(n).includes(q)) : all;
+    const all = Object.entries(this.depNames).sort(([, a], [, b]) => a.localeCompare(b));
+    const shown = q ? all.filter(([, n]) => fold(n).includes(q)) : all;
     const sel = new Set(this.scopes);
     const toggle = (c: string, on: boolean) => this.setScopes(on ? [...this.scopes, c] : this.scopes.filter((x) => x !== c));
     return html`
       <details class="deppicker">
-        <summary class="btn ${sel.size ? 'active' : ''}" aria-label="Filtrer par département">
+        <summary class="btn ${sel.size ? 'active' : ''}" aria-label="Filter by council">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 18s6-5.2 6-10A6 6 0 0 0 4 8c0 4.8 6 10 6 10z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="8" r="2" fill="currentColor"/></svg>
           ${this.scopeLabel}
           ${sel.size ? html`<span class="count">${sel.size}</span>` : nothing}
         </summary>
-        <div class="depmenu" role="group" aria-label="Départements">
+        <div class="depmenu" role="group" aria-label="Councils">
           <div class="depmenu-head">
-            <input class="search" type="search" placeholder="Code ou nom…" aria-label="Chercher un département"
+            <input class="search" type="search" placeholder="Council name…" aria-label="Search a council"
               .value=${this.depQuery} @input=${(e: Event) => (this.depQuery = (e.target as HTMLInputElement).value)}>
-            <button class="link" ?disabled=${!sel.size} @click=${() => this.setScopes([])}>Toute la France</button>
-            ${tip('Départements', HELP.scope)}
+            <button class="link" ?disabled=${!sel.size} @click=${() => this.setScopes([])}>All of Greater Adelaide</button>
+            ${tip('Councils', HELP.scope)}
           </div>
           ${sel.size ? html`<div class="depchips">${this.scopes.map((c) => html`
-            <button class="chip removable" @click=${() => toggle(c, false)} aria-label="Retirer ${this.depNames[c] ?? c}">${c} · ${this.depNames[c] ?? c} ×</button>`)}</div>` : nothing}
+            <button class="chip removable" @click=${() => toggle(c, false)} aria-label="Remove ${this.depNames[c] ?? c}">${this.depNames[c] ?? c} ×</button>`)}</div>` : nothing}
           <div class="deplist">
             ${shown.map(([c, n]) => html`
               <label><input type="checkbox" .checked=${sel.has(c)} @change=${(e: Event) => toggle(c, (e.target as HTMLInputElement).checked)}>
-                <span class="code">${c}</span> ${n}</label>`)}
-            ${shown.length ? nothing : html`<p class="empty">Aucun département ne correspond.</p>`}
+                ${n}</label>`)}
+            ${shown.length ? nothing : html`<p class="empty">No council matches.</p>`}
           </div>
         </div>
       </details>`;
@@ -848,30 +802,30 @@ export class AppRoot extends LitElement {
   private renderScale(label: string, scale: Scale | null) {
     if (this.colorBy === 'score') {
       return html`
-        <div class="key" aria-label="Légende : ${label}">
-          <b>${label}${tip('Groupes A à E', HELP.tier)}</b>
+        <div class="key" aria-label="Legend: ${label}">
+          <b>${label}${tip('Groups A to E', HELP.tier)}</b>
           ${(['A', 'B', 'C', 'D', 'E'] as const).map((t, i) => html`
             <div class="tierrow"><span style="background:${TIER_COLORS[t]};color:${TIER_TEXT[t]}">${t}</span>
-              <small>${['20 % meilleures', '', 'moyennes', '', '20 % dernières'][i]}</small></div>`)}
-          <div class="tierrow"><span class="na"></span><small>éliminée</small></div>
+              <small>${['best 20 %', '', 'average', '', 'last 20 %'][i]}</small></div>`)}
+          <div class="tierrow"><span class="na"></span><small>removed</small></div>
         </div>`;
     }
-    if (!scale) return html`<div class="key"><b>${label}</b><small>aucune donnée</small></div>`;
+    if (!scale) return html`<div class="key"><b>${label}</b><small>no data</small></div>`;
     const c = this.colorBy;
     const mid = (scale.min + scale.max) / 2;
     return html`
-      <div class="key" aria-label="Légende : ${label}">
+      <div class="key" aria-label="Legend: ${label}">
         <b>${label}</b>
         <div class="gradient">
           <div class="bar" style="background:linear-gradient(to top, ${scale.stops.join(', ')})"></div>
           <div class="ticks">
-            <span>${fmt(c, scale.max)}${scale.neutral ? '' : scale.lowIsGood ? html` <em class="bad">pire</em>` : html` <em class="good">mieux</em>`}</span>
+            <span>${fmt(c, scale.max)}${scale.neutral ? '' : scale.lowIsGood ? html` <em class="bad">worse</em>` : html` <em class="good">better</em>`}</span>
             <span>${fmt(c, mid)}</span>
-            <span>${fmt(c, scale.min)}${scale.neutral ? '' : scale.lowIsGood ? html` <em class="good">mieux</em>` : html` <em class="bad">pire</em>`}</span>
+            <span>${fmt(c, scale.min)}${scale.neutral ? '' : scale.lowIsGood ? html` <em class="good">better</em>` : html` <em class="bad">worse</em>`}</span>
           </div>
         </div>
-        <div class="tierrow"><span class="na"></span><small>${this.greyFailing ? 'éliminée ou n.d.' : 'n.d.'}</small></div>
-        <small class="keynote">Échelle du 5e au 95e centile${this.greyFailing ? ' des communes retenues' : ''}</small>
+        <div class="tierrow"><span class="na"></span><small>${this.greyFailing ? 'removed or n/a' : 'n/a'}</small></div>
+        <small class="keynote">Scale from the 5th to the 95th percentile${this.greyFailing ? ' of passing suburbs' : ''}</small>
       </div>`;
   }
 
@@ -879,11 +833,11 @@ export class AppRoot extends LitElement {
     const cols = this.tableColumns;
     return html`
       <details class="colpicker">
-        <summary class="btn">Colonnes · ${cols.length}</summary>
-        <div class="colmenu" role="group" aria-label="Colonnes du tableau">
+        <summary class="btn">Columns · ${cols.length}</summary>
+        <div class="colmenu" role="group" aria-label="Table columns">
           <div class="colmenu-head">
-            <b>Colonnes affichées</b>
-            <button class="link" @click=${() => (this.columns = defaultColumns(this.strategy))}>Par défaut</button>
+            <b>Columns shown</b>
+            <button class="link" @click=${() => (this.columns = defaultColumns(this.strategy))}>Default</button>
           </div>
           ${DETAIL_GROUPS.map((g) => html`
             <fieldset><legend>${g.title}</legend>
@@ -914,7 +868,7 @@ export class AppRoot extends LitElement {
         <table>
           <thead><tr>
             <th scope="col" class="num"><span class="th">#</span></th>
-            ${header('nom', 'Commune')}
+            ${header('nom', 'Suburb')}
             <th scope="col"><span class="th"><button @click=${() => (this.sort = null)}>Score${this.sort ? '' : ' ↓'}</button>${tip('Score', HELP.score)}</span></th>
             ${cols.map((c) => header(c, COLUMNS[c]?.label ?? c))}
           </tr></thead>
@@ -923,19 +877,19 @@ export class AppRoot extends LitElement {
               <tr class=${`${r.pass ? '' : 'failrow'} ${r.row.code === this.selected ? 'sel' : ''}`}
                 @click=${() => this.select(r.row.code, true)}>
                 <td class="num">${r.pass ? rank.get(r.row.code) : ''}</td>
-                <td class="name">${this.tierBadge(r)}<span>${r.row.nom}${this.scopes.length !== 1 ? html` <small class="dep">${r.row.dep}</small>` : nothing}</span></td>
+                <td class="name">${this.tierBadge(r)}<span>${r.row.nom}${r.row.postcodes ? html` <small class="dep">${r.row.postcodes}</small>` : nothing}</span></td>
                 <td>${r.pass
                   ? html`<span class="score"><span class="bar"><i style="width:${r.score}%"></i></span><b>${fmt('score', r.score)}</b></span>`
-                  : html`<span class="out" title=${`Ne passe pas : ${r.failed.map((f) => FILTERS[f]?.label ?? f).join(', ')}`}>éliminée</span>`}</td>
+                  : html`<span class="out" title=${`Fails: ${r.failed.map((f) => FILTERS[f]?.label ?? f).join(', ')}`}>removed</span>`}</td>
                 ${cols.map((c) => html`<td>${val(c, r.row[c])}</td>`)}
               </tr>`)}
           </tbody>
         </table>
         ${list.length > page.length ? html`
           <div class="more">
-            <span>${page.length} sur ${fmt('pop', list.length)} communes affichées</span>
-            <button class="btn" @click=${() => (this.shown += PAGE)}>Afficher ${Math.min(PAGE, list.length - page.length)} de plus</button>
-            <button class="link" @click=${() => (this.shown = list.length)}>Tout afficher</button>
+            <span>${page.length} of ${fmt('pop', list.length)} suburbs shown</span>
+            <button class="btn" @click=${() => (this.shown += PAGE)}>Show ${Math.min(PAGE, list.length - page.length)} more</button>
+            <button class="link" @click=${() => (this.shown = list.length)}>Show all</button>
           </div>` : nothing}
       </div>`;
   }
@@ -963,7 +917,7 @@ export class AppRoot extends LitElement {
         seen.add(c);
         const j: Verdict | null = judge(c, row[c]);
         // Strengths: keep the summary line, not each nearby service or each variant of an indicator.
-        const detailOnly = c.startsWith('dist_') || c === 'apl_gp_65' || c === 'clay_med_high_share' || c === 'n_sales';
+        const detailOnly = c === 'n_sales' || c === 'n_bonds_house' || c === 'seifa_decile_sa' || c.startsWith('bushfire_');
         if (j === 'good' && !detailOnly) good.push(c);
         else if (j === 'bad' || j === 'warn') bad.push(c);
       }
@@ -976,69 +930,55 @@ export class AppRoot extends LitElement {
     const hl = this.highlights(row);
     const t = r.pass && r.tier ? r.tier : 'fail';
     return html`
-      <aside class="sidenav" aria-label="Détails : ${row.nom}">
+      <aside class="sidenav" aria-label="Detail: ${row.nom}">
         <div class="sn-head">
           <div class="sn-title">
             <span class="tier big" style="background:${TIER_COLORS[t]};color:${TIER_TEXT[t]}">${r.pass ? r.tier : '–'}</span>
             <div>
               <h3>${row.nom}</h3>
-              <small>${fmt('pop', row.pop)} habitants · ${row.aav_category ?? ''}</small>
-              ${row.postcodes ? html`<small class="cp" title="Codes postaux">${String(row.postcodes).split(' ').length > 4
-                ? `${String(row.postcodes).split(' ').slice(0, 3).join(', ')}… (${String(row.postcodes).split(' ').length} codes postaux)`
-                : String(row.postcodes).split(' ').join(', ')}</small>` : nothing}
+              <small>${fmt('pop', row.pop)} residents · ${row.council ?? ''} council</small>
+              ${row.postcodes ? html`<small class="cp" title="Postcode">SA ${row.postcodes}</small>` : nothing}
             </div>
           </div>
-          <button class="close" aria-label="Fermer le panneau" title="Fermer (Échap)" @click=${() => this.select(null)}>×</button>
+          <button class="close" aria-label="Close the panel" title="Close (Esc)" @click=${() => this.select(null)}>×</button>
         </div>
         <div class="sn-body">
           ${r.pass
             ? html`<div class="sn-score">
                 <div><span class="label">Score ${tip('Score', HELP.score)}</span><b>${fmt('score', r.score)}</b><small>/100</small></div>
-                <div><span class="label">Groupe ${tip('Groupe', HELP.tier)}</span><b>${r.tier}</b></div>
+                <div><span class="label">Group ${tip('Group', HELP.tier)}</span><b>${r.tier}</b></div>
               </div>`
-            : html`<p class="failbox">Éliminée par : ${r.failed.map((f) => f === 'tiers' ? `groupe ${r.tier ?? ''} hors des groupes ${this.tiers.join(', ')}` : FILTERS[f]?.label ?? this.filterChip([...this.custom].find((c) => c.id === f) ?? { id: f, column: f, op: 'min', enabled: true })).join(', ')}</p>`}
-
-          ${this.summaries[row.code] ? html`
-            <section class="ai" aria-label="Résumé IA">
-              <div class="ai-head"><span class="ai-badge">✦ Résumé IA</span>${tip('Résumé IA', `Paragraphe rédigé automatiquement par un modèle d’IA (${this.summaryMeta?.model.replace(/^us\./, '') ?? ''}, via Amazon Bedrock) à partir des seules données de cette page, le ${this.summaryMeta ? new Date(this.summaryMeta.generated).toLocaleDateString('fr-FR') : ''}.\n\nIl résume la commune en général, puis explique pour quels projets l’outil la retient ou l’écarte avec les réglages par défaut de chaque stratégie (pas avec vos réglages personnalisés). Il peut contenir des erreurs : vérifiez les chiffres dans le détail ci-dessous.`)}</div>
-              <p>${this.summaries[row.code]}</p>
-            </section>`
-          : this.summaryDeps[row.dep as string] === 'loading' ? html`
-            <section class="ai" aria-label="Résumé IA" aria-busy="true">
-              <div class="ai-head"><span class="ai-badge">✦ Résumé IA</span></div>
-              <p class="muted"><span class="spinner small" aria-hidden="true"></span> Chargement du résumé…</p>
-            </section>` : nothing}
+            : html`<p class="failbox">Removed by: ${r.failed.map((f) => f === 'tiers' ? `group ${r.tier ?? ''} outside groups ${this.tiers.join(', ')}` : FILTERS[f]?.label ?? this.filterChip([...this.custom].find((c) => c.id === f) ?? { id: f, column: f, op: 'min', enabled: true })).join(', ')}</p>`}
 
           ${hl.good.length || hl.bad.length ? html`
             <div class="hl">
-              ${hl.good.length ? html`<div class="hl-col good"><h4>Points forts</h4>
+              ${hl.good.length ? html`<div class="hl-col good"><h4>Strengths</h4>
                 <ul>${hl.good.map((c) => html`<li><span>${COLUMNS[c].label}</span><b>${fmt(c, row[c])}</b></li>`)}</ul></div>` : nothing}
-              ${hl.bad.length ? html`<div class="hl-col bad"><h4>Points faibles</h4>
+              ${hl.bad.length ? html`<div class="hl-col bad"><h4>Weaknesses</h4>
                 <ul>${hl.bad.map((c) => html`<li class=${judge(c, row[c]) ?? ''}><span>${COLUMNS[c].label}</span><b>${fmt(c, row[c])}</b></li>`)}</ul></div>` : nothing}
             </div>` : nothing}
 
           ${r.pass ? html`
             <details open class="grp">
-              <summary>Rang par critère ${tip('Rang par critère', HELP.parts)}</summary>
+              <summary>Rank by criterion ${tip('Rank by criterion', HELP.parts)}</summary>
               <div class="parts">${this.signals.filter((s) => s.weight > 0).map((s) => {
                 const p = r.parts[s.id];
                 const pct = p === null || p === undefined ? null : Math.round(p * 100);
                 const cls = pct === null ? '' : pct >= 66 ? 'good' : pct < 34 ? 'bad' : '';
                 return html`<div><span>${SIGNALS[s.id]?.label ?? s.id}</span>
                   <span class="bar ${cls}"><i style="width:${pct ?? 0}%"></i></span>
-                  <b>${pct === null ? 'n.d.' : pct}</b></div>`;
+                  <b>${pct === null ? 'n/a' : pct}</b></div>`;
               })}</div>
             </details>` : nothing}
 
           ${adLinks(row).length ? html`
             <div class="ads">
-              <span class="label">Annonces leboncoin${tip('Annonces', 'Liens vers une recherche leboncoin sur cette commune (code postal ' + (firstPostcode(row) ?? '') + '), ouverte dans un nouvel onglet. Les liens sont construits par l’application ; leboncoin peut changer le format de ses adresses.')}</span>
+              <span class="label">Listings${tip('Listings', 'Links to a search of houses in this suburb (postcode ' + (firstPostcode(row) ?? '') + ') on realestate.com.au and Domain, opened in a new tab. The links are built by the app; the sites can change their address format.')}</span>
               ${adLinks(row).map((l) => html`<a href=${l.url} target="_blank" rel="noopener noreferrer">${l.label} ↗</a>`)}
             </div>` : nothing}
           ${this.detailWarnings(row)}
-          ${this.strategy === 'parking' ? this.renderParkingSimulation(row) : this.renderSimulation(row)}
+          ${this.renderSimulation(row)}
           ${this.renderHistory(row)}
-          ${this.renderTourism(row)}
 
           ${DETAIL_GROUPS.map((g) => html`
             <details open class="grp">
@@ -1046,7 +986,7 @@ export class AppRoot extends LitElement {
               <dl>${g.columns.filter((c) => c in COLUMNS).map((c) => html`
                 <dt>${COLUMNS[c].label}${colTip(c)}</dt><dd>${val(c, row[c])}</dd>`)}</dl>
             </details>`)}
-          <p class="code">Code INSEE ${row.code}</p>
+          <p class="code">ABS suburb code (SAL 2021) ${row.code}</p>
         </div>
       </aside>`;
   }
@@ -1057,29 +997,16 @@ export class AppRoot extends LitElement {
     this.updateComplete.then(() => this.renderRoot.querySelector('#assumptions')?.scrollIntoView({ block: 'start' }));
   }
 
-  /** One line under the strategy blurb: the assumptions the yields on screen rely on, with a "Modifier" link. */
+  /** One line under the strategy blurb: the assumptions the yields on screen rely on, with an "Edit" link. */
   private renderAssumptions() {
-    if (!['long', 'medium', 'parking'].includes(this.strategy)) return nothing;
+    if (this.strategy !== 'long') return nothing;
     const f = this.finance;
     const p = (v: number) => fmt('net_yield', v);
-    const credit = `apport ${p(f.deposit)} · crédit ${p(f.rate)} sur ${f.years} ans · charges ${p(f.charges)} · vacance ${f.vacancy} mois/an`;
-    const local = Object.keys(f.parkingRents ?? {}).length;
-    const head = this.strategy === 'parking'
-      ? html`${f.parkingRent > 0 ? html`place louée <b>${fmt('purchase_price', f.parkingRent)}/mois</b>` : html`<b class="warn">loyer d’une place non indiqué</b>`}
-          ${local ? html` (${local} ${local > 1 ? 'villes' : 'ville'} avec un loyer propre)` : nothing}
-          · taxe foncière ${fmt('purchase_price', f.parkingTax)}/an · `
-      : html`${this.type === 'house' ? 'maison' : 'appartement'} de ${f.surface || REFERENCE_SURFACE[this.type]} m² · `;
+    const a = (v: number) => fmt('purchase_price', v);
     return html`
-      <p class="assume">${this.strategy === 'parking' ? 'Rendements calculés avec' : 'Rendement net et cash-flow calculés avec'} : ${head}${credit}
-        · <button class="link" @click=${() => this.editAssumptions()}>Modifier</button></p>`;
-  }
-
-  /** Set (or clear, with null) the parking rent of one commune. */
-  private setLocalRent(code: string, rent: number | null) {
-    const r = { ...(this.finance.parkingRents ?? {}) };
-    if (rent === null || rent <= 0 || rent === this.finance.parkingRent) delete r[code];
-    else r[code] = rent;
-    this.setFinance({ parkingRents: r });
+      <p class="assume">Net yield and cash flow use: median house · <b>${p(f.deposit)}</b> deposit · loan <b>${p(f.rate)}</b> over ${f.years} years
+        · SA stamp duty + ${a(f.otherCosts)} costs · management ${p(f.charges)} · ${f.vacancy} weeks vacant · ${a(f.holding)}/yr rates and insurance
+        · <button class="link" @click=${() => this.editAssumptions()}>Edit</button></p>`;
   }
 
   private setFinance(patch: Partial<Finance>) {
@@ -1090,7 +1017,6 @@ export class AppRoot extends LitElement {
   /** Purchase assumptions used for net yield and cash flow (drawer section). */
   private renderFinanceInputs() {
     const f = this.finance;
-    const ref = REFERENCE_SURFACE[this.type];
     const field = (label: string, value: number, unit: string, step: string, set: (v: number) => void, help: string) => html`
       <label class="fin">
         <span>${label}${tip(label, help)}</span>
@@ -1102,201 +1028,108 @@ export class AppRoot extends LitElement {
       </label>`;
     const pct = (v: number) => Math.round(v * 1000) / 10;
     return html`
-      <h3 id="assumptions">Hypothèses d’achat <small>rendement net et cash-flow</small> ${tip('Hypothèses d’achat', HELP.finance)}</h3>
+      <h3 id="assumptions">Purchase assumptions <small>net yield and cash flow</small> ${tip('Purchase assumptions', HELP.finance)}</h3>
       <div class="fingrid">
-        ${field('Surface', f.surface || ref, 'm²', '1', (v) => this.setFinance({ surface: v === ref ? 0 : v }),
-          `Surface du bien simulé. Par défaut ${ref} m² (${this.type === 'house' ? 'maison' : 'appartement'}), la surface de référence des loyers ANIL : au-delà, le loyer au m² réel est en général plus bas.`)}
-        ${field('Apport', pct(f.deposit), '%', '1', (v) => this.setFinance({ deposit: v / 100 }), 'Part du coût total (prix + notaire) payée sans emprunter.')}
-        ${field('Taux du crédit', pct(f.rate), '%', '0.05', (v) => this.setFinance({ rate: v / 100 }), 'Taux nominal annuel, hors assurance emprunteur.')}
-        ${field('Durée', f.years, 'ans', '1', (v) => this.setFinance({ years: Math.max(1, v) }), 'Durée du prêt.')}
-        ${field('Frais de notaire', pct(f.notary), '%', '0.5', (v) => this.setFinance({ notary: v / 100 }), 'Environ 7 à 8 % du prix dans l’ancien, 2 à 3 % dans le neuf.')}
-        ${field('Charges et entretien', pct(f.charges), '% loyer', '1', (v) => this.setFinance({ charges: v / 100 }),
-          'Charges de copropriété non récupérables, entretien, assurance propriétaire non occupant, gestion éventuelle. 10 à 20 % du loyer selon le bien.')}
-        ${field('Vacance', f.vacancy, 'mois/an', '0.5', (v) => this.setFinance({ vacancy: Math.min(12, v) }), 'Nombre moyen de mois par an sans locataire.')}
-        ${this.strategy === 'parking' ? html`
-          ${field('Loyer d’une place', f.parkingRent, '€/mois', '5', (v) => this.setFinance({ parkingRent: v }),
-            'Loyer mensuel d’une place ou d’un garage, à relever sur les annonces locales : aucune donnée publique ne le fournit. Le même loyer est appliqué à toutes les communes : comparez des communes d’un même marché, ou ajustez-le.')}
-          ${field('Taxe foncière place', f.parkingTax, '€/an', '10', (v) => this.setFinance({ parkingTax: v }),
-            'Taxe foncière d’une place ou d’un garage. Souvent quelques dizaines d’euros par an ; elle figure dans l’annonce ou l’avis du vendeur.')}` : nothing}
+        ${field('Deposit', pct(f.deposit), '%', '1', (v) => this.setFinance({ deposit: v / 100 }), 'Share of the total cost (price + stamp duty + other costs) paid without borrowing. Under 20 %, lenders usually add mortgage insurance (not counted).')}
+        ${field('Interest rate', pct(f.rate), '%', '0.05', (v) => this.setFinance({ rate: v / 100 }), 'Yearly rate of an investor loan, principal and interest.')}
+        ${field('Loan term', f.years, 'years', '1', (v) => this.setFinance({ years: Math.max(1, v) }), 'Length of the loan.')}
+        ${field('Other purchase costs', f.otherCosts, '$', '500', (v) => this.setFinance({ otherCosts: v }),
+          'Added to stamp duty: transfer and mortgage registration fees (Land Services SA), conveyancing, building and pest inspection. Stamp duty itself is computed from the price with the SA general rates.')}
+        ${field('Management and maintenance', pct(f.charges), '% of rent', '1', (v) => this.setFinance({ charges: v / 100 }),
+          'Property manager fee, letting fee, repairs and upkeep. Adelaide managers often charge 6 to 9 % plus letting fees; 10 to 15 % covers repairs too.')}
+        ${field('Vacancy', f.vacancy, 'weeks/yr', '1', (v) => this.setFinance({ vacancy: Math.min(52, v) }), 'Average weeks per year without a tenant.')}
+        ${field('Holding costs', f.holding, '$/yr', '250', (v) => this.setFinance({ holding: v }),
+          'Council rates, emergency services levy, SA Water supply charge, land tax and landlord insurance, per year. They depend on the property and the council: check the council rates notice and RevenueSA for land tax.')}
       </div>
-      <button class="link" @click=${() => this.setFinance({ ...DEFAULT_FINANCE })}>Hypothèses par défaut</button>`;
+      <button class="link" @click=${() => this.setFinance({ ...DEFAULT_FINANCE })}>Default assumptions</button>`;
   }
 
-  /** One parking space at the commune's median price, with the rent the user entered. */
-  private renderParkingSimulation(row: Row) {
-    const f = this.finance;
-    const open = html`<button class="link" @click=${() => this.editAssumptions()}>Modifier les hypothèses</button>`;
-    if (typeof row.parking_price !== 'number') {
-      return html`<details open class="grp"><summary>Simulation : une place</summary>
-        <p class="muted">Pas assez de ventes de garages ou de places ici (moins de 5 en 3 ans) pour un prix fiable.</p></details>`;
-    }
-    const sim = simulateParking(row, f);
-    const own = f.parkingRents?.[row.code];
-    const rent = parkingRentFor(row.code, f);
-    const rentField = html`
-      <div class="localrent">
-        <label>Loyer d’une place à ${row.nom}
-          <span class="fval"><input type="number" min="0" step="5" .value=${rent > 0 ? String(rent) : ''} placeholder="€"
-            aria-label="Loyer mensuel d’une place à ${row.nom}"
-            @change=${(e: Event) => { const v = Number((e.target as HTMLInputElement).value); this.setLocalRent(row.code, Number.isFinite(v) && v > 0 ? v : null); }}><i>€/mois</i></span>
-        </label>
-        ${own !== undefined
-          ? html`<span class="tag">propre à cette ville</span>
-              <button class="link" @click=${() => this.setLocalRent(row.code, null)}>${f.parkingRent > 0 ? `Revenir au loyer général (${fmt('purchase_price', f.parkingRent)})` : 'Effacer'}</button>`
-          : html`<span class="muted small">${f.parkingRent > 0 ? 'loyer général' : 'aucun loyer indiqué'}</span>`}
-      </div>`;
-    if (!sim) {
-      return html`<details open class="grp"><summary>Simulation : une place</summary>
-        <p class="muted">Prix médian d’une place : <b>${fmt('parking_price', row.parking_price)}</b> (${row.n_parking_sales} ventes en 3 ans). Indiquez le loyer d’une place ici, relevé par exemple sur les annonces de la ville, pour calculer le rendement.</p>
-        ${rentField}</details>`;
-    }
-    const e = (v: number) => fmt('purchase_price', Math.round(v));
-    return html`
-      <details open class="grp sim">
-        <summary>Simulation : une place${tip('Simulation : une place', 'Une place au prix médian DVF de la commune, louée au loyer indiqué : celui de cette ville si vous en avez saisi un, sinon le loyer général des hypothèses d’achat. Il n’existe pas de données publiques sur les loyers de parkings : vérifiez le loyer local sur les sites d’annonces.')}</summary>
-        ${rentField}
-        <p class="muted small">Crédit, charges et vacance : hypothèses générales. ${open}</p>
-        <dl>
-          <dt>Prix médian (${row.n_parking_sales} ventes)</dt><dd>${e(sim.price)}</dd>
-          <dt>+ Frais de notaire (${fmt('net_yield', f.notary)})</dt><dd>${e(sim.notaryFees)}</dd>
-          <dt><b>= Coût total</b></dt><dd><b>${e(sim.totalCost)}</b></dd>
-          <dt>Loyer annuel</dt><dd>${e(sim.rentYear)}</dd>
-          <dt><b>Rendement brut</b>${colTip('parking_gross_yield')}</dt><dd>${val('parking_gross_yield', sim.grossYield)}</dd>
-          <dt>− Vacance (${f.vacancy} mois/an)</dt><dd>${e(-sim.vacancyLoss)}</dd>
-          <dt>− Charges et entretien (${fmt('net_yield', f.charges)})</dt><dd>${e(-sim.charges)}</dd>
-          <dt>− Taxe foncière</dt><dd>${e(-sim.propertyTax)}</dd>
-          <dt><b>Rendement net</b>${colTip('parking_net_yield')}</dt><dd>${val('parking_net_yield', sim.netYield)}</dd>
-          <dt>Mensualité (${fmt('net_yield', f.rate)}, ${f.years} ans)</dt><dd>${e(-sim.monthlyPayment)}</dd>
-          <dt><b>Cash-flow mensuel</b></dt><dd>${val('parking_cashflow_month', Math.round(sim.cashflowMonth))}</dd>
-        </dl>
-        <p class="muted small">Un parking loué seul relève du Code civil : loyer libre, pas de DPE. Les charges de copropriété d’une place varient beaucoup : ajustez « Charges et entretien ».</p>
-      </details>`;
-  }
-
-  /** Step-by-step purchase simulation for the selected commune. */
+  /** Step-by-step purchase simulation for the selected suburb. */
   private renderSimulation(row: Row) {
-    const sim = simulate(row, this.type, this.finance);
-    const kind = this.type === 'house' ? 'maison' : 'appartement';
+    const sim = simulate(row, this.finance);
     if (!sim) {
-      return html`<details class="grp"><summary>Simulation d’achat</summary>
-        <p class="muted">Pas assez de ventes ou de loyers pour simuler l’achat d’un ${kind} ici.</p></details>`;
+      return html`<details class="grp"><summary>Purchase simulation</summary>
+        <p class="muted">Not enough house sales or new leases to simulate a purchase here.</p></details>`;
     }
     const e = (v: number) => fmt('purchase_price', Math.round(v));
     const f = this.finance;
     return html`
       <details open class="grp sim">
-        <summary>Simulation d’achat${tip('Simulation d’achat', HELP.finance)}</summary>
-        <p class="muted">${kind[0].toUpperCase() + kind.slice(1)} de ${sim.surface} m² au prix médian de la commune.
-          <button class="link" @click=${() => (this.settingsOpen = true)}>Modifier les hypothèses</button></p>
+        <summary>Purchase simulation${tip('Purchase simulation', HELP.finance)}</summary>
+        <p class="muted">The median house of the suburb, rented at the median weekly rent of new house leases.
+          <button class="link" @click=${() => this.editAssumptions()}>Edit the assumptions</button></p>
         <dl>
-          <dt>Prix (${fmt('price_m2', row[`price_m2_${this.type}`])}/m²)</dt><dd>${e(sim.price)}</dd>
-          <dt>+ Frais de notaire (${fmt('net_yield', f.notary)})</dt><dd>${e(sim.notaryFees)}</dd>
-          <dt><b>= Coût total</b></dt><dd><b>${e(sim.totalCost)}</b></dd>
-          <dt>Loyer annuel (${fmt('rent_m2', row[`rent_m2_${this.type}`])}/m²/mois)</dt><dd>${e(sim.rentYear)}</dd>
-          <dt>− Vacance (${f.vacancy} mois)</dt><dd>${e(-sim.vacancyLoss)}</dd>
-          <dt>− Charges et entretien (${fmt('net_yield', f.charges)})</dt><dd>${e(-sim.charges)}</dd>
-          <dt>− Taxe foncière moyenne${colTip('tfpb_total_avg_eur')}</dt><dd>${e(-sim.propertyTax)}</dd>
-          <dt><b>= Revenu net annuel</b></dt><dd><b>${e(sim.netIncome)}</b></dd>
-          <dt><b>Rendement net</b>${colTip('net_yield')}</dt><dd>${val('net_yield', sim.netYield)}</dd>
-          <dt>Emprunt (apport ${fmt('net_yield', f.deposit)})</dt><dd>${e(sim.loan)}</dd>
-          <dt>Mensualité (${fmt('net_yield', f.rate)}, ${f.years} ans)</dt><dd>${e(-sim.monthlyPayment)}</dd>
-          <dt><b>Cash-flow mensuel</b>${colTip('cashflow_month')}</dt><dd>${val('cashflow_month', Math.round(sim.cashflowMonth))}</dd>
+          <dt>Median price (${row.n_sales} sales)</dt><dd>${e(sim.price)}</dd>
+          <dt>+ Stamp duty (SA general rates)</dt><dd>${e(sim.stampDuty)}</dd>
+          <dt>+ Other purchase costs</dt><dd>${e(sim.otherCosts)}</dd>
+          <dt><b>= Total cost</b></dt><dd><b>${e(sim.totalCost)}</b></dd>
+          <dt>Yearly rent (${fmt('rent_week', row.rent_week)} × 52)</dt><dd>${e(sim.rentYear)}</dd>
+          <dt>− Vacancy (${f.vacancy} weeks)</dt><dd>${e(-sim.vacancyLoss)}</dd>
+          <dt>− Management and maintenance (${fmt('net_yield', f.charges)})</dt><dd>${e(-sim.charges)}</dd>
+          <dt>− Holding costs</dt><dd>${e(-sim.holding)}</dd>
+          <dt><b>= Net yearly income</b></dt><dd><b>${e(sim.netIncome)}</b></dd>
+          <dt><b>Net yield</b>${colTip('net_yield')}</dt><dd>${val('net_yield', sim.netYield)}</dd>
+          <dt>Loan (deposit ${fmt('net_yield', f.deposit)})</dt><dd>${e(sim.loan)}</dd>
+          <dt>Repayment (${fmt('net_yield', f.rate)}, ${f.years} years)</dt><dd>${e(-sim.monthlyPayment)}</dd>
+          <dt><b>Monthly cash flow</b>${colTip('cashflow_month')}</dt><dd>${val('cashflow_month', Math.round(sim.cashflowMonth))}</dd>
         </dl>
-        <p class="muted small">Avant impôt sur le revenu et assurance emprunteur. Le loyer ANIL est charges comprises : le revenu réel est un peu plus bas.</p>
+        <p class="muted small">Before income tax, negative gearing and depreciation. Rents of new leases are usually above the rent a sitting tenant pays.</p>
       </details>`;
   }
 
-  /** Tourist beds per year (INSEE 2015–2026) as bars, and second homes at the last three censuses. */
-  private renderTourism(row: Row) {
-    const years = Array.from({ length: 12 }, (_, i) => String(2015 + i));
-    const beds = years.map((y) => num(row[`tour_beds_${y}`]) ?? 0);
-    const homes = [['2011', num(row.second_homes_2011)], ['2016', num(row.second_homes_2016)], ['2022', num(row.second_homes_2022)]] as const;
-    if (!beds.some((b) => b > 0) && !homes.some(([, v]) => (v ?? 0) > 0)) return nothing;
-    const W = 300, H = 110, padL = 40, padB = 16, padT = 8;
-    const max = Math.max(1, ...beds);
-    const bw = (W - padL) / years.length;
-    const y = (v: number) => padT + (H - padT - padB) * (1 - v / max);
-    const int = (v: number) => Math.round(v).toLocaleString('fr-FR');
-    return html`
-      <details open class="grp">
-        <summary>Tourisme : évolution${tip('Tourisme : évolution', HELP.tourism)}</summary>
-        ${beds.some((b) => b > 0) ? html`
-        <svg class="hist" viewBox="0 0 ${W} ${H}" role="img" aria-label="Lits touristiques par an, 2015 à 2026">
-          ${[0, max / 2, max].map((v) => svg`<text x=${padL - 4} y=${y(v) + 3} text-anchor="end" class="ax">${int(v)}</text>
-            <line x1=${padL} x2=${W} y1=${y(v)} y2=${y(v)} class="grid"></line>`)}
-          ${beds.map((b, i) => svg`<rect x=${padL + i * bw + bw * 0.15} width=${bw * 0.7} y=${y(b)} height=${H - padB - y(b)}
-            fill="var(--brand-2)" opacity="0.75"><title>${years[i]} : ${int(b)} lits touristiques</title></rect>`)}
-          ${years.map((yy, i) => (i % 2 === 0 || i === years.length - 1)
-            ? svg`<text x=${padL + (i + 0.5) * bw} y=${H - 3} text-anchor="middle" class="ax">${yy.slice(2)}</text>` : nothing)}
-        </svg>
-        <div class="legendrow"><span><i style="background:var(--brand-2)"></i>Lits touristiques (hôtels, campings, résidences, villages vacances), 2015–2026</span></div>`
-        : html`<p class="muted small">Aucun hôtel, camping, village vacances ni résidence de tourisme recensé par l’INSEE dans la commune entre 2015 et 2026 (c’est le cas de 7 communes sur 10, surtout des villages). Les gîtes et meublés de particuliers ne sont pas comptés : regardez plutôt l’évolution des résidences secondaires ci-dessous.</p>`}
-        <dl class="kv">
-          <dt>Résidences secondaires ${homes.map(([yy]) => yy).join(' / ')}${colTip('second_homes_change')}</dt>
-          <dd>${homes.map(([, v]) => (v === null ? '—' : int(v))).join(' / ')}</dd>
-          <dt>Évolution des lits 2019 → 2026${colTip('tour_beds_change')}</dt><dd>${val('tour_beds_change', row.tour_beds_change)}</dd>
-          <dt>Évolution résid. secondaires 2011 → 2022</dt><dd>${val('second_homes_change', row.second_homes_change)}</dd>
-        </dl>
-      </details>`;
-  }
-
-  /** Median €/m² and number of sales per year (DVF 2021–2025), as a small SVG chart. */
+  /** Median house price and number of sales per year (SA Valuer-General 2015–2025), as a small SVG chart. */
   private renderHistory(row: Row) {
-    const years = ['2021', '2022', '2023', '2024', '2025'];
-    const series = (['house', 'apt'] as const).map((t) => ({
-      t,
-      label: t === 'house' ? 'Maisons' : 'Appartements',
-      price: years.map((y) => num(row[`hist_${t}_${y}`])),
-      n: years.map((y) => num(row[`nhist_${t}_${y}`]) ?? 0),
-    })).filter((s) => s.price.some((p) => p !== null) || s.n.some((n) => n > 0));
-    if (!series.length) return nothing;
+    const years = Array.from({ length: 11 }, (_, i) => String(2015 + i));
+    const price = years.map((y) => num(row[`hist_house_${y}`]));
+    const n = years.map((y) => num(row[`nhist_house_${y}`]) ?? 0);
+    if (!price.some((p) => p !== null)) return nothing;
     const W = 300, H = 120, padL = 44, padB = 18, padT = 8;
-    const prices = series.flatMap((s) => s.price.filter((p): p is number => p !== null));
-    const maxN = Math.max(1, ...series.flatMap((s) => s.n));
-    const lo = prices.length ? Math.min(...prices) * 0.9 : 0;
-    const hi = prices.length ? Math.max(...prices) * 1.05 : 1;
+    const prices = price.filter((p): p is number => p !== null);
+    const maxN = Math.max(1, ...n);
+    const lo = Math.min(...prices) * 0.9;
+    const hi = Math.max(...prices) * 1.05;
     const x = (i: number) => padL + (i + 0.5) * ((W - padL) / years.length);
     const y = (p: number) => padT + (H - padT - padB) * (1 - (p - lo) / (hi - lo || 1));
-    const bw = (W - padL) / years.length / (series.length + 1);
-    const color = { house: 'var(--brand-2)', apt: '#5b8def' } as const;
+    const bw = (W - padL) / years.length * 0.6;
+    const k = (v: number) => (v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : `${Math.round(v / 1e3)}k`);
+    const pts = price.map((p, i) => (p === null ? null : `${x(i)},${y(p)}`)).filter(Boolean).join(' ');
     return html`
       <details open class="grp">
-        <summary>Prix et ventes par an${tip('Prix et ventes par an', HELP.history)}</summary>
-        <svg class="hist" viewBox="0 0 ${W} ${H}" role="img" aria-label="Prix médian au m² et nombre de ventes par an">
-          ${[lo, (lo + hi) / 2, hi].map((v) => svg`<text x=${padL - 4} y=${y(v) + 3} text-anchor="end" class="ax">${Math.round(v / 100) * 100}</text>
+        <summary>Price and sales per year${tip('Price and sales per year', HELP.history)}</summary>
+        <svg class="hist" viewBox="0 0 ${W} ${H}" role="img" aria-label="Median house price and number of sales per year">
+          ${[lo, (lo + hi) / 2, hi].map((v) => svg`<text x=${padL - 4} y=${y(v) + 3} text-anchor="end" class="ax">${k(v)}</text>
             <line x1=${padL} x2=${W} y1=${y(v)} y2=${y(v)} class="grid"></line>`)}
-          ${series.map((s, si) => s.n.map((n, i) => svg`<rect x=${x(i) - bw * series.length / 2 + si * bw} width=${bw * 0.9}
-            y=${H - padB - (n / maxN) * (H - padT - padB) * 0.45} height=${(n / maxN) * (H - padT - padB) * 0.45}
-            fill=${color[s.t]} opacity="0.22"><title>${s.label} ${years[i]} : ${n} ventes</title></rect>`))}
-          ${series.map((s) => {
-            const pts = s.price.map((p, i) => (p === null ? null : `${x(i)},${y(p)}`)).filter(Boolean).join(' ');
-            return svg`<polyline points=${pts} fill="none" stroke=${color[s.t]} stroke-width="2"></polyline>
-              ${s.price.map((p, i) => (p === null ? nothing : svg`<circle cx=${x(i)} cy=${y(p)} r="3" fill=${color[s.t]}>
-                <title>${s.label} ${years[i]} : ${fmt('price_m2', p)}/m² (${s.n[i]} ventes)</title></circle>`))}`;
-          })}
-          ${years.map((yy, i) => svg`<text x=${x(i)} y=${H - 4} text-anchor="middle" class="ax">${yy}</text>`)}
+          ${n.map((c, i) => svg`<rect x=${x(i) - bw / 2} width=${bw}
+            y=${H - padB - (c / maxN) * (H - padT - padB) * 0.45} height=${(c / maxN) * (H - padT - padB) * 0.45}
+            fill="var(--brand-2)" opacity="0.22"><title>${years[i]}: ${c} sales</title></rect>`)}
+          <polyline points=${pts} fill="none" stroke="var(--brand-2)" stroke-width="2"></polyline>
+          ${price.map((p, i) => (p === null ? nothing : svg`<circle cx=${x(i)} cy=${y(p)} r="3" fill="var(--brand-2)">
+            <title>${years[i]}: ${fmt('price', p)} (${n[i]} sales)</title></circle>`))}
+          ${years.map((yy, i) => (i % 2 === 0 ? svg`<text x=${x(i)} y=${H - 4} text-anchor="middle" class="ax">${yy.slice(2)}</text>` : nothing))}
         </svg>
-        <div class="legendrow">${series.map((s) => html`<span><i style="background:${color[s.t]}"></i>${s.label} (€/m², ligne ; ventes, barres)</span>`)}</div>
-        <p class="muted small">Année 2025 : ventes enregistrées au 30 juin 2026, encore incomplètes. Un point manque quand il y a moins de 5 ventes dans l’année.</p>
+        <div class="legendrow"><span><i style="background:var(--brand-2)"></i>Houses (median price, line; sales, bars)</span></div>
+        <p class="muted small">A point is missing when the year had fewer than 5 sales.</p>
       </details>`;
   }
 
   private detailWarnings(row: Row) {
     const w: string[] = [];
-    if (row.zone_tendue === true && this.strategy === 'short') w.push('Zone tendue : le maire peut limiter la location courte durée ou la soumettre à autorisation. Vérifiez les règles en mairie avant d’acheter.');
-    if (row.rent_confidence === 'low') w.push('L’ANIL juge cette estimation de loyer peu fiable.');
-    if (this.strategy === 'live' || this.strategy === 'land') w.push('Avant d’acheter un bien précis : consultez l’état des risques de l’adresse exacte (georisques.gouv.fr) et, pour un terrain, sa zone dans le plan local d’urbanisme (geoportail-urbanisme.gouv.fr). Les données ici sont à l’échelle de la commune.');
+    if ((num(row.bushfire_med_high_share) ?? 0) > 0) w.push('Part of this suburb is in a Medium or High bushfire protection area: new homes and extensions must meet bushfire construction standards, and insurance can cost more. Check the address on the SA Property and Planning Atlas (sappa.plan.sa.gov.au).');
+    if ((num(row.low_lying_share) ?? 0) > 0.05) w.push('Part of this suburb is below 5 m: check coastal flooding and sea-level rise maps for the exact address with the council.');
+    if (typeof row.price_median_house !== 'number') w.push('No house price here: the Valuer-General covers the 19 metropolitan councils only, and a suburb needs at least 5 sales over the last four quarters.');
+    if (this.strategy === 'live') w.push('Before buying a given house: read the Form 1 (vendor statement) and check the zoning and overlays of the address on the SA Property and Planning Atlas. The data here is suburb-wide.');
     return w.map((t) => html`<p class="note">${t}</p>`);
   }
 
   private renderFooter() {
+    const d = (s: string | undefined) => (s ? new Date(s).toLocaleDateString('en-AU') : '—');
     return html`
       <footer class="card">
-        <p><b>À lire avant de se fier à un chiffre.</b> Les loyers sont des estimations de l’ANIL à partir d’annonces (charges comprises, logement vide), le plus souvent calculées pour un groupe de communes voisines et non pour la commune seule. Les prix sont des médianes DVF sur 24 mois jusqu’au ${this.meta ? new Date(this.meta.dvf_window_end).toLocaleDateString('fr-FR') : '—'} ; les petites communes ont peu de ventes. Le rendement brut ne tient compte ni des impôts, ni des charges, ni de la vacance, ni des travaux. Un risque signalé veut dire qu’il est reconnu ou réglementé dans la commune, pas qu’il est grave ni qu’il touche un bien précis. Il n’existe pas de donnée ouverte sur les règles de location courte durée commune par commune : la « zone tendue » n’est qu’un indice. Les couleurs vert / orange / rouge suivent des seuils fixes, identiques pour toutes les communes. Survolez les « ? » pour le détail de chaque calcul.</p>
-        <details><summary>Sources et licences</summary>
+        <p><b>Read this before trusting a number.</b> House prices are suburb medians from the SA Valuer-General over the last four quarters (${this.meta?.price_window ?? '—'}); small suburbs have few sales, and units are not covered. Rents are medians of new house leases from rental bonds (${this.meta?.rent_window ?? '—'}). Census figures date from 2021 and crime figures from 2025-26. Gross yield ignores stamp duty, rates, land tax, insurance, management, vacancy and repairs. A risk flag means a hazard is mapped over a large part of the suburb, not that a given house is exposed. Green / orange / red follow fixed thresholds, the same for every suburb. Hover the "?" for how each value is computed.</p>
+        <details><summary>Sources and licences</summary>
           <ul>${this.meta?.sources.map((s) => html`<li><a href=${s.url} rel="noopener" target="_blank">${s.producer}</a> — ${s.vintage} — ${s.licence}${s.credit ? html` — <i>${s.credit}</i>` : nothing}</li>`)}</ul>
         </details>
-        <p class="small">Données construites le ${this.meta ? new Date(this.meta.built).toLocaleDateString('fr-FR') : '—'}. Ceci n’est pas un conseil en investissement.</p>
+        <p class="small">Data built on ${d(this.meta?.built)}. This is not financial advice.</p>
       </footer>`;
   }
 

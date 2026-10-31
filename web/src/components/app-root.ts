@@ -120,6 +120,10 @@ export class AppRoot extends LitElement {
   @state() private columns: string[] = [];
   @state() private theme: 'auto' | 'light' | 'dark' = 'auto';
   @state() private systemDark = false;
+  /** AI summaries (summaries.json, about 0.4 MB), fetched the first time a suburb is opened. */
+  @state() private summaries: Record<string, string> = {};
+  @state() private summaryMeta: { model: string; generated: string } | null = null;
+  @state() private summaryState: 'none' | 'loading' | 'done' = 'none';
   /** Megabytes of suburb data received so far; null once the data is loaded. */
   @state() private loadingMb: number | null = 0;
   @state() private error: string | null = null;
@@ -197,6 +201,27 @@ export class AppRoot extends LitElement {
     let at = 0;
     for (const c of chunks) { all.set(c, at); at += c.length; }
     return JSON.parse(new TextDecoder().decode(all));
+  }
+
+  /** Load the AI summaries once (optional: the app works without them). */
+  private loadSummaries() {
+    if (this.summaryState !== 'none') return;
+    this.summaryState = 'loading';
+    fetch('./data/summaries.json')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.summaries) {
+          this.summaries = d.summaries;
+          this.summaryMeta = { model: d.model, generated: d.generated };
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => (this.summaryState = 'done'));
+  }
+
+  willUpdate() {
+    // A suburb was opened (click or shared link): fetch the summaries.
+    if (this.selected && this.raw.length) this.loadSummaries();
   }
 
   private applyUrl(hash: string) {
@@ -950,6 +975,17 @@ export class AppRoot extends LitElement {
               </div>`
             : html`<p class="failbox">Removed by: ${r.failed.map((f) => f === 'tiers' ? `group ${r.tier ?? ''} outside groups ${this.tiers.join(', ')}` : FILTERS[f]?.label ?? this.filterChip([...this.custom].find((c) => c.id === f) ?? { id: f, column: f, op: 'min', enabled: true })).join(', ')}</p>`}
 
+          ${this.summaries[row.code] ? html`
+            <section class="ai" aria-label="AI summary">
+              <div class="ai-head"><span class="ai-badge">✦ AI summary</span>${tip('AI summary', `Paragraph written automatically by an AI model (${this.summaryMeta?.model.replace(/^us\./, '') ?? ''}, via Amazon Bedrock) from the data on this page only, on ${this.summaryMeta ? new Date(this.summaryMeta.generated).toLocaleDateString('en-AU') : ''}.\n\nIt describes the suburb, then explains which strategies the screener keeps or removes it for with each strategy's default settings (not your custom settings). It can contain mistakes: check the figures in the detail below.`)}</div>
+              <p>${this.summaries[row.code]}</p>
+            </section>`
+          : this.summaryState === 'loading' ? html`
+            <section class="ai" aria-label="AI summary" aria-busy="true">
+              <div class="ai-head"><span class="ai-badge">✦ AI summary</span></div>
+              <p class="muted"><span class="spinner small" aria-hidden="true"></span> Loading the summary…</p>
+            </section>` : nothing}
+
           ${hl.good.length || hl.bad.length ? html`
             <div class="hl">
               ${hl.good.length ? html`<div class="hl-col good"><h4>Strengths</h4>
@@ -1116,7 +1152,11 @@ export class AppRoot extends LitElement {
     const w: string[] = [];
     if ((num(row.bushfire_med_high_share) ?? 0) > 0) w.push('Part of this suburb is in a Medium or High bushfire protection area: new homes and extensions must meet bushfire construction standards, and insurance can cost more. Check the address on the SA Property and Planning Atlas (sappa.plan.sa.gov.au).');
     if ((num(row.low_lying_share) ?? 0) > 0.05) w.push('Part of this suburb is below 5 m: check coastal flooding and sea-level rise maps for the exact address with the council.');
-    if (typeof row.price_median_house !== 'number') w.push('No house price here: the Valuer-General covers the 19 metropolitan councils only, and a suburb needs at least 5 sales over the last four quarters.');
+    if (typeof row.price_median_house !== 'number') {
+      w.push(row.n_sales_house === null || row.n_sales_house === undefined
+        ? `No house price here: the Valuer-General's median house sales cover the 19 metropolitan councils only, and ${row.council ?? 'this'} council is not one of them. Rents, census, crime and risks are available.`
+        : 'No house price here: the suburb had fewer than 5 house sales over the last four quarters.');
+    }
     if (this.strategy === 'live') w.push('Before buying a given house: read the Form 1 (vendor statement) and check the zoning and overlays of the address on the SA Property and Planning Atlas. The data here is suburb-wide.');
     return w.map((t) => html`<p class="note">${t}</p>`);
   }
@@ -1376,7 +1416,8 @@ export class AppRoot extends LitElement {
     .grp summary::-webkit-details-marker { display: none; }
     .grp summary::before { content: '▸'; margin-right: 6px; color: var(--faint); transition: transform .15s; }
     .grp[open] summary::before { transform: rotate(90deg); }
-    .grp dl { display: grid; grid-template-columns: 1fr auto; margin: 4px 0 0; gap: 5px 12px; font-size: 13px; }
+    /* Labels keep at least 60 % of the width; a long text value wraps instead of squeezing them. */
+    .grp dl { display: grid; grid-template-columns: minmax(60%, 1fr) auto; margin: 4px 0 0; gap: 5px 12px; font-size: 13px; }
     .muted { color: var(--muted); font-size: 12.5px; margin: 4px 0; }
     .muted.small { font-size: 11.5px; }
     .sim dd { font-variant-numeric: tabular-nums; }
@@ -1388,7 +1429,7 @@ export class AppRoot extends LitElement {
     .fingrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
     .fin { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
     .fin > span:first-child { display: flex; align-items: center; color: var(--ink-2); }
-    .grp dt { color: var(--ink-2); } .grp dd { margin: 0; text-align: right; white-space: nowrap; }
+    .grp dt { color: var(--ink-2); } .grp dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
     .parts { display: grid; gap: 6px; padding-top: 4px; }
     .parts div { display: grid; grid-template-columns: 1fr 90px 28px; gap: 8px; align-items: center; font-size: 12.5px; }
     .parts .bar { width: 100%; } .parts b { text-align: right; }

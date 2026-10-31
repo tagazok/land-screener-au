@@ -415,6 +415,11 @@ def build(raw: Path, out: Path) -> None:
     lon, lat = np.radians(df["lon"].to_numpy()), np.radians(df["lat"].to_numpy())
     cbd = 6371 * 2 * np.arcsin(np.sqrt(np.sin((lat - lat0) / 2) ** 2 + np.cos(lat) * np.cos(lat0) * np.sin((lon - lon0) / 2) ** 2))
     small = pl.col("pop") < MIN_POP_RATES
+    # Suburbs listed in the latest Valuer-General file, with or without sales (a few files
+    # occasionally listed outer suburbs such as Mount Barker: those do not count as covered).
+    y, q = NOW[-1]
+    latest = _sheet(raw / "sa/house" / f"q{q}-{y}.xlsx")
+    covered = sorted({norm(r[1]) for r in latest[1:] if len(r) > 1 and str(r[1]).strip()})
     df = df.with_columns(
         pl.Series("cbd_km", np.round(cbd, 1)),
         (pl.col("rent_week_house") * 52 / pl.col("price_median_house")).alias("gross_yield_house"),
@@ -423,7 +428,10 @@ def build(raw: Path, out: Path) -> None:
         .otherwise(pl.col("_crime_burglary").fill_null(0) / pl.col("households") * 1000).alias("crime_burglary"),
         *(pl.when(small).then(None).otherwise(pl.col(f"_{c}").fill_null(0) / pl.col("pop") * 1000).alias(c)
           for c in ("crime_violence", "crime_damage", "crime_theft")),
-        *(pl.col(c).fill_null(0) for c in ("n_sales_house", "n_bonds_house", "n_bonds_flat")),
+        # Suburbs listed by the Valuer-General with no sale: 0. Not listed at all (councils outside its
+        # 19 metropolitan councils, e.g. Mount Barker): unknown, not zero.
+        pl.when(pl.col("key").is_in(covered)).then(pl.col("n_sales_house").fill_null(0)).alias("n_sales_house"),
+        *(pl.col(c).fill_null(0) for c in ("n_bonds_house", "n_bonds_flat")),
     ).drop([c for c in df.columns if c.startswith("_crime")] + ["key", "sa2", "households", "sa2_pop"])
 
     floats = [c for c, t in df.schema.items() if t == pl.Float64]

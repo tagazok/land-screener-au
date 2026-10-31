@@ -160,7 +160,8 @@ export function derive(raw: Row[], _type: PropertyType = 'house'): Row[] {
     return {
       ...r,
       price: r.price_median_house ?? null,
-      n_sales: r.n_sales_house ?? 0,
+      // null = council not covered by the Valuer-General (unknown, not zero sales).
+      n_sales: r.n_sales_house ?? null,
       rent_week: r.rent_week_house ?? null,
       gross_yield: r.gross_yield_house ?? null,
       risk_count: hit.length,
@@ -231,7 +232,8 @@ export const STRATEGIES: Strategy[] = [
     blurb: 'Buy for the price gain over 10 years or more. Favours suburbs where prices and rents have risen, the population grows and the CBD is close, while staying affordable.',
     type: 'house',
     filters: [
-      f('sales', 'n_sales', 'min', 10),
+      // Price growth needs prices: suburbs the Valuer-General does not cover are removed.
+      f('sales', 'n_sales', 'min', 10, true, true),
       f('risks', 'risk_count', 'max', 1),
       f('trend', 'price_trend_5y', 'min', 0, false),
       f('growth', 'pop_cagr', 'min', 0, false),

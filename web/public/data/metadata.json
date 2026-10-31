@@ -282,7 +282,7 @@
  },
  "coverage": {
   "price_median_house": 0.731,
-  "n_sales_house": 1.0,
+  "n_sales_house": 0.883,
   "price_trend_5y": 0.638,
   "rent_week_house": 0.731,
   "n_bonds_house": 1.0,
